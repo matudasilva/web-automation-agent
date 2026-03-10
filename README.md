@@ -30,9 +30,15 @@ cp .env.example .env
 
 ## First Run
 
-No application flow is implemented yet in Phase 0.
+Phase 0 includes a minimal bootstrap path only (no real business flow yet).
 
-After installation, you can verify the environment with:
+Run the bootstrap:
+
+```bash
+python -m src.main
+```
+
+Then verify smoke coverage:
 
 ```bash
 pytest

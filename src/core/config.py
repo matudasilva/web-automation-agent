@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, Field
@@ -33,6 +34,23 @@ def get_settings() -> Settings:
         headless=_read_bool("HEADLESS", True),
         screenshot_dir=Path(_read_env("SCREENSHOT_DIR", "./screenshots")),
         allowed_domain=_read_env("ALLOWED_DOMAIN", "example.com"),
+    )
+
+
+def validate_allowed_domain(base_url: str, allowed_domain: str) -> None:
+    hostname = urlparse(base_url).hostname
+    if not hostname:
+        raise ValueError(f"Invalid BASE_URL: {base_url}")
+
+    normalized_allowed = allowed_domain.strip().lower()
+    normalized_host = hostname.lower()
+    if normalized_host == normalized_allowed:
+        return
+    if normalized_host.endswith(f".{normalized_allowed}"):
+        return
+
+    raise ValueError(
+        f"BASE_URL domain '{normalized_host}' is outside ALLOWED_DOMAIN '{normalized_allowed}'"
     )
 
 
