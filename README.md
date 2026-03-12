@@ -8,7 +8,7 @@ This repository is being developed as a structured agent-style automation system
 
 ## Current Status
 
-This project is currently in **Phase 0**.
+This project is currently in **Phase 2 in progress**.
 
 Implemented so far:
 
@@ -19,9 +19,11 @@ Implemented so far:
 - allowed-domain validation
 - screenshot capture service
 - minimal pages/flows seam
-- smoke tests for bootstrap and first deterministic flow
+- first deterministic landing flow
+- failure evidence capture on landing-flow errors
+- smoke tests for bootstrap and landing flow
 
-No real business workflow is implemented yet.
+The browser automation foundation is complete, and the first deterministic flow is in place. Broader business workflows are not implemented yet.
 
 ## Development Approach
 
@@ -83,7 +85,7 @@ cp .env.example .env
 
 ## First Run
 
-Phase 0 includes a minimal bootstrap path only.
+The current bootstrap runs the first deterministic landing flow.
 
 Run the bootstrap:
 
@@ -97,7 +99,8 @@ This will:
 - validate the configured allowed domain
 - launch a Playwright browser session
 - run the first deterministic landing flow
-- capture a checkpoint screenshot
+- capture a success checkpoint screenshot
+- capture failure evidence if the landing flow raises after navigation starts
 
 ## Run Tests
 
@@ -109,10 +112,9 @@ pytest
 
 Planned next steps include:
 
-- page object structure
-- deterministic workflow modules
 - login/session handling
 - retry and resilience improvements
+- richer flow result handling and downstream consumers
 - result export
 - scheduled execution support
 

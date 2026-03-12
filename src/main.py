@@ -19,10 +19,13 @@ def run_bootstrap() -> Path:
 
     logger.info("bootstrap_start")
     with browser_session(settings) as page:
-        screenshot_path = run_landing_flow(page=page, settings=settings, logger=logger)
+        flow_result = run_landing_flow(page=page, settings=settings, logger=logger)
+
+    if flow_result.screenshot_path is None:
+        raise RuntimeError("Landing flow completed without a screenshot path")
 
     logger.info("bootstrap_complete")
-    return screenshot_path
+    return flow_result.screenshot_path
 
 
 def main() -> None:

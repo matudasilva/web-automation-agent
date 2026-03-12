@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from src.core.config import Settings
+from src.flows.flow_result import FlowResult
 from src.flows.landing_flow import run_landing_flow
 
 
@@ -40,13 +41,19 @@ def test_landing_flow_opens_url_validates_and_screenshots(tmp_path) -> None:
     page = FakePage()
     logger = logging.getLogger("test.landing_flow")
 
-    screenshot_path = run_landing_flow(page=page, settings=settings, logger=logger)
+    result = run_landing_flow(page=page, settings=settings, logger=logger)
 
     assert page.goto_calls == [("https://example.com", "domcontentloaded")]
     assert page.load_states == ["domcontentloaded", "load"]
-    assert screenshot_path == screenshot_dir / "landing_ready.png"
-    assert page.screenshot_path == str(screenshot_path)
-    assert screenshot_path.exists()
+    assert result == FlowResult(
+        success=True,
+        step="capture_checkpoint",
+        current_url="https://example.com",
+        screenshot_path=screenshot_dir / "landing_ready.png",
+    )
+    assert page.screenshot_path == str(result.screenshot_path)
+    assert result.screenshot_path is not None
+    assert result.screenshot_path.exists()
 
 
 def test_landing_flow_captures_failure_evidence_after_navigation(tmp_path, caplog) -> None:

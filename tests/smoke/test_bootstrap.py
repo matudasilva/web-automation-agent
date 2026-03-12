@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from src.core.config import Settings
+from src.flows.flow_result import FlowResult
 from src.main import run_bootstrap
 
 
@@ -32,7 +33,12 @@ def test_bootstrap_runs_landing_flow(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(
         "src.main.run_landing_flow",
         lambda page, settings, logger: calls.append((page, settings, logger))
-        or expected_path,
+        or FlowResult(
+            success=True,
+            step="capture_checkpoint",
+            current_url="https://example.com",
+            screenshot_path=expected_path,
+        ),
     )
 
     screenshot_path = run_bootstrap()

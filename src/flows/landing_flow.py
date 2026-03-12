@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 from playwright.sync_api import Page
 
 from src.core.config import Settings
+from src.flows.flow_result import FlowResult
 from src.pages.landing_page import LandingPage
 
 
-def run_landing_flow(page: Page, settings: Settings, logger: logging.Logger) -> Path:
+def run_landing_flow(
+    page: Page, settings: Settings, logger: logging.Logger
+) -> FlowResult:
     landing_page = LandingPage(page=page, screenshot_dir=settings.screenshot_dir)
     current_step = "open_base_url"
     navigation_started = False
@@ -33,7 +35,12 @@ def run_landing_flow(page: Page, settings: Settings, logger: logging.Logger) -> 
         logger.info("landing_flow_capture_checkpoint")
         checkpoint_path = landing_page.capture_checkpoint(name="landing_ready")
         # TODO: Add target-site-specific checks when real selectors are defined.
-        return checkpoint_path
+        return FlowResult(
+            success=True,
+            step=current_step,
+            current_url=page.url,
+            screenshot_path=checkpoint_path,
+        )
     except Exception:
         if navigation_started:
             logger.exception("landing_flow_failed step=%s", current_step)
