@@ -18,7 +18,8 @@ Implemented so far:
 - Playwright browser bootstrap
 - allowed-domain validation
 - screenshot capture service
-- minimal smoke test
+- minimal pages/flows seam
+- smoke tests for bootstrap and first deterministic flow
 
 No real business workflow is implemented yet.
 
@@ -69,14 +70,14 @@ source .venv/bin/activate
 
 Install the project and development dependencies:
 
-```
-pip install-e".[dev]"
+```bash
+pip install -e ".[dev]"
 playwright install
 ```
 
 Create your local environment file:
 
-```
+```bash
 cp .env.example .env
 ```
 
@@ -86,8 +87,8 @@ Phase 0 includes a minimal bootstrap path only.
 
 Run the bootstrap:
 
-```
-python-m src.main
+```bash
+python -m src.main
 ```
 
 This will:
@@ -95,12 +96,12 @@ This will:
 - load settings from environment
 - validate the configured allowed domain
 - launch a Playwright browser session
-- open the configured base URL
-- capture a screenshot
+- run the first deterministic landing flow
+- capture a checkpoint screenshot
 
 ## Run Tests
 
-```
+```bash
 pytest
 ```
 
