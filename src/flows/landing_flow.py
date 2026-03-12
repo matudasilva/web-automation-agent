@@ -11,19 +11,36 @@ from src.pages.landing_page import LandingPage
 
 def run_landing_flow(page: Page, settings: Settings, logger: logging.Logger) -> Path:
     landing_page = LandingPage(page=page, screenshot_dir=settings.screenshot_dir)
+    current_step = "open_base_url"
+    navigation_started = False
 
-    logger.info("landing_flow_open_base_url")
-    page.goto(settings.base_url, wait_until="domcontentloaded")
+    try:
+        logger.info("landing_flow_open_base_url")
+        navigation_started = True
+        page.goto(settings.base_url, wait_until="domcontentloaded")
 
-    logger.info("landing_flow_wait_ready")
-    landing_page.wait_until_ready()
+        current_step = "wait_ready"
+        logger.info("landing_flow_wait_ready")
+        landing_page.wait_until_ready()
 
-    logger.info("landing_flow_validate_page")
-    landing_page.assert_loaded(
-        base_url=settings.base_url, allowed_domain=settings.allowed_domain
-    )
+        current_step = "validate_page"
+        logger.info("landing_flow_validate_page")
+        landing_page.assert_loaded(
+            base_url=settings.base_url, allowed_domain=settings.allowed_domain
+        )
 
-    logger.info("landing_flow_capture_checkpoint")
-    checkpoint_path = landing_page.capture_checkpoint(name="landing_ready")
-    # TODO: Add target-site-specific checks when real selectors are defined.
-    return checkpoint_path
+        current_step = "capture_checkpoint"
+        logger.info("landing_flow_capture_checkpoint")
+        checkpoint_path = landing_page.capture_checkpoint(name="landing_ready")
+        # TODO: Add target-site-specific checks when real selectors are defined.
+        return checkpoint_path
+    except Exception:
+        if navigation_started:
+            logger.exception("landing_flow_failed step=%s", current_step)
+            try:
+                landing_page.capture_checkpoint(name="landing_failure")
+            except Exception:
+                logger.exception(
+                    "landing_flow_failure_screenshot_failed step=%s", current_step
+                )
+        raise
