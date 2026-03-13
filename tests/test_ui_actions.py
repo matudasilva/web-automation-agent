@@ -4,9 +4,12 @@ import pytest
 
 from src.browser.ui_actions import (
     DEFAULT_TIMEOUT_MS,
+    assert_locator_visible,
     assert_visible,
+    click_locator_visible,
     click_visible,
     fill_visible,
+    wait_for_locator_visible,
     wait_for_visible,
 )
 
@@ -90,3 +93,29 @@ def test_click_visible_propagates_locator_wait_errors() -> None:
 
     with pytest.raises(RuntimeError, match="not visible"):
         click_visible(page=page, selector="#submit")
+
+
+def test_wait_for_locator_visible_returns_locator_after_waiting() -> None:
+    locator = FakeLocator()
+
+    result = wait_for_locator_visible(locator=locator, timeout_ms=1500)
+
+    assert result is locator
+    assert locator.wait_calls == [("visible", 1500)]
+
+
+def test_click_locator_visible_waits_before_clicking() -> None:
+    locator = FakeLocator()
+
+    click_locator_visible(locator=locator)
+
+    assert locator.wait_calls == [("visible", DEFAULT_TIMEOUT_MS)]
+    assert locator.click_calls == 1
+
+
+def test_assert_locator_visible_waits_for_locator() -> None:
+    locator = FakeLocator()
+
+    assert_locator_visible(locator=locator, timeout_ms=2500)
+
+    assert locator.wait_calls == [("visible", 2500)]
