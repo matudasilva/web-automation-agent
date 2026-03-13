@@ -20,6 +20,7 @@ Implemented so far:
 - screenshot capture service
 - per-run artifact organization
 - concise execution summary logging
+- reusable UI action helpers
 - minimal pages/flows seam
 - first deterministic landing flow
 - failure evidence capture on landing-flow errors
