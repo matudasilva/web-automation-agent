@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from src.core.config import Settings
@@ -8,7 +9,7 @@ from src.flows.run_context import RunContext
 from src.main import run_bootstrap
 
 
-def test_bootstrap_runs_landing_flow(tmp_path, monkeypatch) -> None:
+def test_bootstrap_runs_landing_flow(tmp_path, monkeypatch, caplog) -> None:
     screenshot_dir = tmp_path / "screenshots"
     artifact_dir = screenshot_dir / "run-123"
     settings = Settings(
@@ -32,6 +33,8 @@ def test_bootstrap_runs_landing_flow(tmp_path, monkeypatch) -> None:
 
     monkeypatch.setattr("src.main.get_settings", lambda: settings)
     monkeypatch.setattr("src.main.browser_session", lambda _settings: FakeContextManager())
+    monkeypatch.setattr("src.main.configure_logging", lambda: None)
+    caplog.set_level(logging.INFO, logger="src.main")
     monkeypatch.setattr(
         "src.main.create_run_context",
         lambda _artifact_base_dir: RunContext(
@@ -59,3 +62,8 @@ def test_bootstrap_runs_landing_flow(tmp_path, monkeypatch) -> None:
     assert calls[0][1] == settings
     assert calls[0][2] == RunContext(run_id="run-123", artifact_dir=artifact_dir)
     assert screenshot_path == expected_path
+    assert (
+        "flow_execution_summary flow_name=landing_flow success=True "
+        "step=capture_checkpoint current_url=https://example.com run_id=run-123 "
+        f"artifact_dir={artifact_dir} screenshot_path={expected_path}"
+    ) in caplog.text

@@ -5,6 +5,7 @@ from pathlib import Path
 from src.browser.factory import browser_session
 from src.core.config import get_settings, validate_allowed_domain
 from src.core.logging import configure_logging, get_logger
+from src.flows.execution_summary import log_flow_execution_summary
 from src.flows.landing_flow import run_landing_flow
 from src.flows.run_context import create_run_context
 
@@ -24,6 +25,10 @@ def run_bootstrap() -> Path:
         flow_result = run_landing_flow(
             page=page, settings=settings, run_context=run_context, logger=logger
         )
+
+    log_flow_execution_summary(
+        logger=logger, flow_name="landing_flow", flow_result=flow_result
+    )
 
     if flow_result.screenshot_path is None:
         raise RuntimeError("Landing flow completed without a screenshot path")

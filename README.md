@@ -19,6 +19,7 @@ Implemented so far:
 - allowed-domain validation
 - screenshot capture service
 - per-run artifact organization
+- concise execution summary logging
 - minimal pages/flows seam
 - first deterministic landing flow
 - failure evidence capture on landing-flow errors
@@ -101,6 +102,7 @@ This will:
 - launch a Playwright browser session
 - run the first deterministic landing flow
 - create a per-run artifact directory under the configured screenshot base path
+- emit a concise execution summary for the run
 - capture a success checkpoint screenshot
 - capture failure evidence if the landing flow raises after navigation starts
 
