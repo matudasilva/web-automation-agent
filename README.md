@@ -21,6 +21,7 @@ Implemented so far:
 - per-run artifact organization
 - concise execution summary logging
 - reusable UI action helpers
+- generic target page/flow seam
 - minimal pages/flows seam
 - first deterministic landing flow
 - failure evidence capture on landing-flow errors
