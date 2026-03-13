@@ -8,16 +8,19 @@ import pytest
 from src.core.config import Settings
 from src.flows.flow_result import FlowResult
 from src.flows.landing_flow import run_landing_flow
+from src.flows.run_context import RunContext
 
 
 def test_landing_flow_opens_url_validates_and_screenshots(tmp_path) -> None:
     screenshot_dir = tmp_path / "screenshots"
+    artifact_dir = screenshot_dir / "run-123"
     settings = Settings(
         base_url="https://example.com",
         headless=True,
         screenshot_dir=screenshot_dir,
         allowed_domain="example.com",
     )
+    run_context = RunContext(run_id="run-123", artifact_dir=artifact_dir)
 
     class FakePage:
         def __init__(self) -> None:
@@ -41,7 +44,9 @@ def test_landing_flow_opens_url_validates_and_screenshots(tmp_path) -> None:
     page = FakePage()
     logger = logging.getLogger("test.landing_flow")
 
-    result = run_landing_flow(page=page, settings=settings, logger=logger)
+    result = run_landing_flow(
+        page=page, settings=settings, run_context=run_context, logger=logger
+    )
 
     assert page.goto_calls == [("https://example.com", "domcontentloaded")]
     assert page.load_states == ["domcontentloaded", "load"]
@@ -49,7 +54,9 @@ def test_landing_flow_opens_url_validates_and_screenshots(tmp_path) -> None:
         success=True,
         step="capture_checkpoint",
         current_url="https://example.com",
-        screenshot_path=screenshot_dir / "landing_ready.png",
+        run_id="run-123",
+        artifact_dir=artifact_dir,
+        screenshot_path=artifact_dir / "landing_ready.png",
     )
     assert page.screenshot_path == str(result.screenshot_path)
     assert result.screenshot_path is not None
@@ -58,12 +65,14 @@ def test_landing_flow_opens_url_validates_and_screenshots(tmp_path) -> None:
 
 def test_landing_flow_captures_failure_evidence_after_navigation(tmp_path, caplog) -> None:
     screenshot_dir = tmp_path / "screenshots"
+    artifact_dir = screenshot_dir / "run-456"
     settings = Settings(
         base_url="https://example.com",
         headless=True,
         screenshot_dir=screenshot_dir,
         allowed_domain="example.com",
     )
+    run_context = RunContext(run_id="run-456", artifact_dir=artifact_dir)
 
     class ExpectedFlowError(RuntimeError):
         pass
@@ -101,10 +110,12 @@ def test_landing_flow_captures_failure_evidence_after_navigation(tmp_path, caplo
         )
 
         with pytest.raises(ExpectedFlowError, match="validation failed"):
-            run_landing_flow(page=page, settings=settings, logger=logger)
+            run_landing_flow(
+                page=page, settings=settings, run_context=run_context, logger=logger
+            )
 
     assert page.goto_calls == [("https://example.com", "domcontentloaded")]
     assert page.load_states == ["domcontentloaded", "load"]
-    assert page.screenshot_paths == [str(screenshot_dir / "landing_failure.png")]
-    assert (screenshot_dir / "landing_failure.png").exists()
+    assert page.screenshot_paths == [str(artifact_dir / "landing_failure.png")]
+    assert (artifact_dir / "landing_failure.png").exists()
     assert "landing_flow_failed step=validate_page" in caplog.text

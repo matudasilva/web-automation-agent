@@ -6,13 +6,14 @@ from playwright.sync_api import Page
 
 from src.core.config import Settings
 from src.flows.flow_result import FlowResult
+from src.flows.run_context import RunContext
 from src.pages.landing_page import LandingPage
 
 
 def run_landing_flow(
-    page: Page, settings: Settings, logger: logging.Logger
+    page: Page, settings: Settings, run_context: RunContext, logger: logging.Logger
 ) -> FlowResult:
-    landing_page = LandingPage(page=page, screenshot_dir=settings.screenshot_dir)
+    landing_page = LandingPage(page=page, screenshot_dir=run_context.artifact_dir)
     current_step = "open_base_url"
     navigation_started = False
 
@@ -39,6 +40,8 @@ def run_landing_flow(
             success=True,
             step=current_step,
             current_url=page.url,
+            run_id=run_context.run_id,
+            artifact_dir=run_context.artifact_dir,
             screenshot_path=checkpoint_path,
         )
     except Exception:
