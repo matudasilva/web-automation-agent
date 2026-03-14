@@ -16,10 +16,12 @@ __pycache__/
 
 # Playwright / logs / artifacts
 logs/
+!logs/.gitkeep
 screenshots/
 playwright-report/
 test-results/
 *.egg-info/
+docs/private/
 
 # IDE
 .vscode/
