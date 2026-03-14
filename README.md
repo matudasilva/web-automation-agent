@@ -23,11 +23,14 @@ Implemented so far:
 - reusable UI action helpers
 - generic target page/flow seam
 - minimal pages/flows seam
+- private authenticated marketplace flow scaffold that stops before final publish
 - first deterministic landing flow
 - failure evidence capture on landing-flow errors
 - smoke tests for bootstrap and landing flow
 
 The browser automation foundation is complete, and the first deterministic flow is in place. Broader business workflows are not implemented yet.
+
+The current private site-specific step is limited to navigating an authenticated marketplace management area, opening the group-share flow, selecting the destination group, and stopping at a non-destructive composer checkpoint before the final publish action.
 
 ## Development Approach
 
