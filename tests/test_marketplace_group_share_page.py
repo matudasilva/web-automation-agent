@@ -119,10 +119,13 @@ def test_marketplace_group_share_page_opens_group_destination(
 ) -> None:
     calls: list[object] = []
 
-    class FakePage:
+    class FakeShareDialog:
         def get_by_text(self, text: str, exact: bool):
             calls.append((text, exact))
             return group_option
+
+    class FakePage:
+        pass
 
     group_option = object()
     marketplace_page = MarketplaceGroupSharePage(
@@ -130,30 +133,82 @@ def test_marketplace_group_share_page_opens_group_destination(
     )
 
     monkeypatch.setattr(
+        marketplace_page,
+        "find_share_dialog",
+        lambda: calls.append("share_dialog") or FakeShareDialog(),
+    )
+    monkeypatch.setattr(
         "src.pages.marketplace_group_share_page.click_locator_visible",
         lambda locator: calls.append(locator),
     )
 
     marketplace_page.open_group_destination()
 
-    assert calls == [("Grupo", True), group_option]
+    assert calls == ["share_dialog", ("Grupo", True), group_option]
+
+
+def test_marketplace_group_share_page_selects_group_within_group_picker(
+    monkeypatch, tmp_path
+) -> None:
+    calls: list[object] = []
+
+    class FakeGroupPickerDialog:
+        def get_by_text(self, text: str, exact: bool):
+            calls.append((text, exact))
+            return group_option
+
+    class FakePage:
+        pass
+
+    group_option = object()
+    marketplace_page = MarketplaceGroupSharePage(
+        page=FakePage(), screenshot_dir=tmp_path / "screenshots"
+    )
+
+    monkeypatch.setattr(
+        marketplace_page,
+        "find_group_picker_dialog",
+        lambda: calls.append("group_picker_dialog") or FakeGroupPickerDialog(),
+    )
+    monkeypatch.setattr(
+        "src.pages.marketplace_group_share_page.click_locator_visible",
+        lambda locator: calls.append(locator),
+    )
+
+    marketplace_page.select_group("Las Piedras, la paz Progreso, Colon")
+
+    assert calls == [
+        "group_picker_dialog",
+        ("Las Piedras, la paz Progreso, Colon", True),
+        group_option,
+    ]
 
 
 def test_marketplace_group_share_page_asserts_group_composer_visible(
     monkeypatch, tmp_path
 ) -> None:
     calls: list[object] = []
+    composer_dialog = None
 
-    class FakePage:
+    class FakeComposerDialog:
         def get_by_role(self, role: str, name: str):
             locator = f"{role}:{name}"
             calls.append(locator)
             return locator
 
+    class FakePage:
+        pass
+
     marketplace_page = MarketplaceGroupSharePage(
         page=FakePage(), screenshot_dir=tmp_path / "screenshots"
     )
 
+    composer_dialog = FakeComposerDialog()
+    monkeypatch.setattr(
+        marketplace_page,
+        "find_group_composer_dialog",
+        lambda: calls.append("composer_dialog") or composer_dialog,
+    )
     monkeypatch.setattr(
         "src.pages.marketplace_group_share_page.assert_locator_visible",
         lambda locator: calls.append(("visible", locator)),
@@ -162,8 +217,8 @@ def test_marketplace_group_share_page_asserts_group_composer_visible(
     marketplace_page.assert_group_composer_visible()
 
     assert calls == [
-        "heading:Crear publicación",
-        ("visible", "heading:Crear publicación"),
+        "composer_dialog",
+        ("visible", composer_dialog),
         "button:Publicar",
         ("visible", "button:Publicar"),
     ]

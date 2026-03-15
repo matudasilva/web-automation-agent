@@ -50,8 +50,25 @@ class MarketplaceGroupSharePage(BasePage):
     def find_listing_container(self, listing_title: str) -> Locator:
         title_locator = self.page.get_by_text(listing_title, exact=False)
         wait_for_locator_visible(title_locator)
-        listing_container = self.page.locator("div").filter(has=title_locator).first
+        share_button_locator = self.page.get_by_role(
+            "button", name=self.labels.share_button
+        )
+        listing_container = (
+            self.page.locator("div")
+            .filter(has=title_locator)
+            .filter(has=share_button_locator)
+            .first
+        )
         return wait_for_locator_visible(listing_container)
+
+    def find_share_dialog(self) -> Locator:
+        share_dialog_heading = self.page.get_by_role(
+            "heading", name=self.labels.share_dialog_heading
+        )
+        share_dialog = self.page.locator("[role='dialog']").filter(
+            has=share_dialog_heading
+        ).first
+        return wait_for_locator_visible(share_dialog)
 
     def open_listing_share_dialog(self, listing_title: str) -> None:
         listing_container = self.find_listing_container(listing_title)
@@ -61,27 +78,45 @@ class MarketplaceGroupSharePage(BasePage):
         click_locator_visible(share_button)
 
     def assert_share_dialog_visible(self) -> None:
-        assert_locator_visible(
-            self.page.get_by_role("heading", name=self.labels.share_dialog_heading)
-        )
+        assert_locator_visible(self.find_share_dialog())
 
     def open_group_destination(self) -> None:
-        group_option = self.page.get_by_text(self.labels.group_destination, exact=True)
+        share_dialog = self.find_share_dialog()
+        group_option = share_dialog.get_by_text(
+            self.labels.group_destination, exact=True
+        )
         click_locator_visible(group_option)
+
+    def find_group_picker_dialog(self) -> Locator:
+        group_picker_heading = self.page.get_by_role(
+            "heading", name=self.labels.group_picker_heading
+        )
+        group_picker_dialog = self.page.locator("[role='dialog']").filter(
+            has=group_picker_heading
+        ).first
+        return wait_for_locator_visible(group_picker_dialog)
 
     def assert_group_picker_visible(self) -> None:
-        assert_locator_visible(
-            self.page.get_by_role("heading", name=self.labels.group_picker_heading)
-        )
+        assert_locator_visible(self.find_group_picker_dialog())
 
     def select_group(self, group_name: str) -> None:
-        group_option = self.page.get_by_text(group_name, exact=False)
+        group_picker_dialog = self.find_group_picker_dialog()
+        group_option = group_picker_dialog.get_by_text(group_name, exact=True)
         click_locator_visible(group_option)
 
+    def find_group_composer_dialog(self) -> Locator:
+        composer_heading = self.page.get_by_role(
+            "heading", name=self.labels.composer_heading
+        )
+        composer_dialog = self.page.locator("[role='dialog']").filter(
+            has=composer_heading
+        ).first
+        return wait_for_locator_visible(composer_dialog)
+
     def assert_group_composer_visible(self) -> None:
-        assert_locator_visible(
-            self.page.get_by_role("heading", name=self.labels.composer_heading)
+        composer_dialog = self.find_group_composer_dialog()
+        assert_locator_visible(composer_dialog)
+        publish_button = composer_dialog.get_by_role(
+            "button", name=self.labels.publish_button
         )
-        assert_locator_visible(
-            self.page.get_by_role("button", name=self.labels.publish_button)
-        )
+        assert_locator_visible(publish_button)
