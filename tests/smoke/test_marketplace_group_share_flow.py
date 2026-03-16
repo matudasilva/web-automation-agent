@@ -15,7 +15,7 @@ def test_marketplace_group_share_flow_runs_safe_group_share_path(tmp_path) -> No
     screenshot_dir = tmp_path / "screenshots"
     artifact_dir = screenshot_dir / "run-marketplace-group-share"
     settings = Settings(
-        base_url="https://example.com/marketplace/you/selling",
+        base_url="https://example.com",
         headless=True,
         screenshot_dir=screenshot_dir,
         allowed_domain="example.com",
@@ -77,8 +77,10 @@ def test_marketplace_group_share_flow_runs_safe_group_share_path(tmp_path) -> No
             lambda self, group_name: calls.append(("select_group", group_name)),
         )
         monkeypatch.setattr(
-            "src.pages.marketplace_group_share_page.MarketplaceGroupSharePage.assert_group_composer_visible",
-            lambda self: calls.append(("assert_group_composer_visible", None)),
+            "src.pages.marketplace_group_share_page.MarketplaceGroupSharePage.assert_group_composer_content_ready",
+            lambda self, listing_title: calls.append(
+                ("assert_group_composer_content_ready", listing_title)
+            ),
         )
 
         result = run_marketplace_group_share_flow(
@@ -104,7 +106,10 @@ def test_marketplace_group_share_flow_runs_safe_group_share_path(tmp_path) -> No
         ("open_group_destination", None),
         ("assert_group_picker_visible", None),
         ("select_group", "Las Piedras, la paz Progreso, Colon"),
-        ("assert_group_composer_visible", None),
+        (
+            "assert_group_composer_content_ready",
+            "Botitas de gamuza tipo desert / urbanas – muy cómodas",
+        ),
     ]
     assert result == FlowResult(
         success=True,
@@ -124,7 +129,7 @@ def test_marketplace_group_share_flow_captures_failure_evidence(
     screenshot_dir = tmp_path / "screenshots"
     artifact_dir = screenshot_dir / "run-marketplace-group-share-failure"
     settings = Settings(
-        base_url="https://example.com/marketplace/you/selling",
+        base_url="https://example.com",
         headless=True,
         screenshot_dir=screenshot_dir,
         allowed_domain="example.com",

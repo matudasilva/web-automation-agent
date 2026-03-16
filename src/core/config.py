@@ -16,9 +16,14 @@ class Settings(BaseModel):
     model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
 
     base_url: str = Field(default="https://example.com")
+    browser: str = Field(default="chromium")
     headless: bool = Field(default=True)
+    browser_profile_dir: Path | None = Field(default=None)
     screenshot_dir: Path = Field(default=Path("./screenshots"))
     allowed_domain: str = Field(default="example.com")
+    wait_for_manual_ready: bool = Field(default=False)
+    marketplace_listing_title: str = Field(default="")
+    marketplace_group_name: str = Field(default="")
 
 
 def load_environment() -> None:
@@ -31,9 +36,14 @@ def get_settings() -> Settings:
 
     return Settings(
         base_url=_read_env("BASE_URL", "https://example.com"),
+        browser=_read_env("BROWSER", "chromium"),
         headless=_read_bool("HEADLESS", True),
+        browser_profile_dir=_read_optional_path("BROWSER_PROFILE_DIR"),
         screenshot_dir=Path(_read_env("SCREENSHOT_DIR", "./screenshots")),
         allowed_domain=_read_env("ALLOWED_DOMAIN", "example.com"),
+        wait_for_manual_ready=_read_bool("WAIT_FOR_MANUAL_READY", False),
+        marketplace_listing_title=_read_env("MARKETPLACE_LISTING_TITLE", ""),
+        marketplace_group_name=_read_env("MARKETPLACE_GROUP_NAME", ""),
     )
 
 
@@ -76,3 +86,16 @@ def _read_bool(name: str, default: bool) -> bool:
     if normalized in {"0", "false", "no", "off"}:
         return False
     return default
+
+
+def _read_optional_path(name: str) -> Path | None:
+    from os import getenv
+
+    value = getenv(name)
+    if value is None:
+        return None
+
+    normalized = value.strip()
+    if not normalized:
+        return None
+    return Path(normalized)

@@ -184,15 +184,19 @@ def test_marketplace_group_share_page_selects_group_within_group_picker(
     ]
 
 
-def test_marketplace_group_share_page_asserts_group_composer_visible(
+def test_marketplace_group_share_page_asserts_group_composer_content_ready(
     monkeypatch, tmp_path
 ) -> None:
     calls: list[object] = []
-    composer_dialog = None
 
     class FakeComposerDialog:
         def get_by_role(self, role: str, name: str):
             locator = f"{role}:{name}"
+            calls.append(locator)
+            return locator
+
+        def get_by_text(self, text: str, exact: bool):
+            locator = f"text:{text}:{exact}"
             calls.append(locator)
             return locator
 
@@ -206,19 +210,60 @@ def test_marketplace_group_share_page_asserts_group_composer_visible(
     composer_dialog = FakeComposerDialog()
     monkeypatch.setattr(
         marketplace_page,
-        "find_group_composer_dialog",
+        "get_visible_group_composer",
         lambda: calls.append("composer_dialog") or composer_dialog,
     )
     monkeypatch.setattr(
         "src.pages.marketplace_group_share_page.assert_locator_visible",
-        lambda locator: calls.append(("visible", locator)),
+        lambda locator, timeout_ms=5000: calls.append(("visible", locator, timeout_ms)),
     )
 
-    marketplace_page.assert_group_composer_visible()
+    marketplace_page.assert_group_composer_content_ready(
+        "Botitas de gamuza tipo desert"
+    )
 
     assert calls == [
         "composer_dialog",
-        ("visible", composer_dialog),
+        ("visible", composer_dialog, 5000),
         "button:Publicar",
-        ("visible", "button:Publicar"),
+        ("visible", "button:Publicar", 5000),
+        "text:Botitas de gamuza tipo desert:False",
+        ("visible", "text:Botitas de gamuza tipo desert:False", 10000),
     ]
+
+
+def test_marketplace_group_share_page_fails_when_group_composer_content_is_still_loading(
+    monkeypatch, tmp_path
+) -> None:
+    class FakeComposerDialog:
+        def get_by_role(self, role: str, name: str):
+            return f"{role}:{name}"
+
+        def get_by_text(self, text: str, exact: bool):
+            return f"text:{text}:{exact}"
+
+    class FakePage:
+        pass
+
+    marketplace_page = MarketplaceGroupSharePage(
+        page=FakePage(), screenshot_dir=tmp_path / "screenshots"
+    )
+    monkeypatch.setattr(
+        marketplace_page,
+        "get_visible_group_composer",
+        lambda: FakeComposerDialog(),
+    )
+
+    def fake_assert_locator_visible(locator, timeout_ms=5000):
+        if str(locator).startswith("text:"):
+            raise RuntimeError("still loading")
+
+    monkeypatch.setattr(
+        "src.pages.marketplace_group_share_page.assert_locator_visible",
+        fake_assert_locator_visible,
+    )
+
+    with pytest.raises(
+        ValueError, match="listing preview content is still loading or missing"
+    ):
+        marketplace_page.assert_group_composer_content_ready("Botitas")

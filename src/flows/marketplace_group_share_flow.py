@@ -22,13 +22,14 @@ def run_marketplace_group_share_flow(
     marketplace_page = MarketplaceGroupSharePage(
         page=page, screenshot_dir=run_context.artifact_dir
     )
-    current_step = "open_base_url"
+    selling_url = f"{settings.base_url.rstrip('/')}/marketplace/you/selling"
+    current_step = "open_marketplace_selling"
     navigation_started = False
 
     try:
-        logger.info("marketplace_group_share_flow_open_base_url")
+        logger.info("marketplace_group_share_flow_open_marketplace_selling")
         navigation_started = True
-        page.goto(settings.base_url, wait_until="domcontentloaded")
+        page.goto(selling_url, wait_until="domcontentloaded")
 
         current_step = "wait_ready"
         logger.info("marketplace_group_share_flow_wait_ready")
@@ -60,9 +61,9 @@ def run_marketplace_group_share_flow(
         logger.info("marketplace_group_share_flow_select_group")
         marketplace_page.select_group(group_name)
 
-        current_step = "assert_group_composer_visible"
-        logger.info("marketplace_group_share_flow_assert_group_composer_visible")
-        marketplace_page.assert_group_composer_visible()
+        current_step = "assert_group_composer_content_ready"
+        logger.info("marketplace_group_share_flow_assert_group_composer_content_ready")
+        marketplace_page.assert_group_composer_content_ready(listing_title)
 
         current_step = "capture_checkpoint"
         logger.info("marketplace_group_share_flow_capture_checkpoint")

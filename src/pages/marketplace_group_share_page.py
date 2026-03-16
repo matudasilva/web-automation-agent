@@ -27,6 +27,8 @@ class MarketplaceGroupShareLabels:
 
 
 class MarketplaceGroupSharePage(BasePage):
+    composer_content_timeout_ms = 10000
+
     def __init__(self, page: Page, screenshot_dir: Path) -> None:
         super().__init__(page=page, screenshot_dir=screenshot_dir)
         self.labels = MarketplaceGroupShareLabels()
@@ -104,7 +106,7 @@ class MarketplaceGroupSharePage(BasePage):
         group_option = group_picker_dialog.get_by_text(group_name, exact=True)
         click_locator_visible(group_option)
 
-    def find_group_composer_dialog(self) -> Locator:
+    def get_visible_group_composer(self) -> Locator:
         composer_heading = self.page.get_by_role(
             "heading", name=self.labels.composer_heading
         )
@@ -113,10 +115,20 @@ class MarketplaceGroupSharePage(BasePage):
         ).first
         return wait_for_locator_visible(composer_dialog)
 
-    def assert_group_composer_visible(self) -> None:
-        composer_dialog = self.find_group_composer_dialog()
+    def assert_group_composer_content_ready(self, listing_title: str) -> None:
+        composer_dialog = self.get_visible_group_composer()
         assert_locator_visible(composer_dialog)
         publish_button = composer_dialog.get_by_role(
             "button", name=self.labels.publish_button
         )
         assert_locator_visible(publish_button)
+        listing_preview = composer_dialog.get_by_text(listing_title, exact=False)
+        try:
+            assert_locator_visible(
+                listing_preview, timeout_ms=self.composer_content_timeout_ms
+            )
+        except Exception as exc:
+            raise ValueError(
+                "Group composer is visible but the listing preview content is still loading "
+                f"or missing for title fragment '{listing_title}'"
+            ) from exc
