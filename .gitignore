@@ -7,6 +7,7 @@ __pycache__/
 # Env
 .env
 .env.*
+.env.local
 !.env.example
 *.log
 *.pem
@@ -21,10 +22,20 @@ screenshots/
 playwright-report/
 test-results/
 *.egg-info/
-docs/private/
+
 
 # IDE
 .vscode/
 
 # OS
 .DS_Store
+*.swp
+
+# Local runtime state
+runtime/*
+!runtime/.gitkeep
+screenshots/
+
+
+# Private working docs
+docs/private/
