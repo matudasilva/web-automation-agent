@@ -22,6 +22,7 @@ class Settings(BaseModel):
     screenshot_dir: Path = Field(default=Path("./screenshots"))
     allowed_domain: str = Field(default="example.com")
     wait_for_manual_ready: bool = Field(default=False)
+    wait_for_manual_publish_confirmation: bool = Field(default=False)
     marketplace_listing_title: str = Field(default="")
     marketplace_group_name: str = Field(default="")
 
@@ -42,6 +43,9 @@ def get_settings() -> Settings:
         screenshot_dir=Path(_read_env("SCREENSHOT_DIR", "./screenshots")),
         allowed_domain=_read_env("ALLOWED_DOMAIN", "example.com"),
         wait_for_manual_ready=_read_bool("WAIT_FOR_MANUAL_READY", False),
+        wait_for_manual_publish_confirmation=_read_bool(
+            "WAIT_FOR_MANUAL_PUBLISH_CONFIRMATION", False
+        ),
         marketplace_listing_title=_read_env("MARKETPLACE_LISTING_TITLE", ""),
         marketplace_group_name=_read_env("MARKETPLACE_GROUP_NAME", ""),
     )

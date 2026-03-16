@@ -9,6 +9,7 @@ from src.flows.execution_summary import log_flow_execution_summary
 from src.flows.landing_flow import run_landing_flow
 from src.flows.marketplace_group_share_flow import run_marketplace_group_share_flow
 from src.flows.run_context import create_run_context
+from src.services.screenshot_service import capture_page_screenshot
 
 
 def run_bootstrap() -> Path:
@@ -47,6 +48,13 @@ def run_bootstrap() -> Path:
             flow_result=flow_result,
         )
 
+        if settings.wait_for_manual_publish_confirmation:
+            wait_for_manual_publish_confirmation(
+                page=page,
+                screenshot_dir=run_context.artifact_dir,
+                logger=logger,
+            )
+
     if flow_result.screenshot_path is None:
         raise RuntimeError(
             "Marketplace group share flow completed without a screenshot path"
@@ -65,6 +73,19 @@ def wait_for_manual_ready(*, page, base_url: str, logger) -> None:
     page.goto(base_url, wait_until="domcontentloaded")
     logger.info("manual_ready_waiting_for_enter")
     input("Manual login/session ready. Press Enter to continue...")
+
+
+def wait_for_manual_publish_confirmation(*, page, screenshot_dir: Path, logger) -> None:
+    logger.info("marketplace_group_share_flow_manual_publish_handoff")
+    input(
+        "Composer listo. Haz clic manualmente en Publicar, verifica que la publicación "
+        "se haya enviado correctamente y luego presiona Enter para finalizar."
+    )
+    capture_page_screenshot(
+        page=page,
+        screenshot_dir=screenshot_dir,
+        name="manual_publish_confirmed",
+    )
 
 
 if __name__ == "__main__":

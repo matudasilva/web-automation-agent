@@ -196,7 +196,20 @@ def test_marketplace_group_share_page_asserts_group_composer_content_ready(
             return locator
 
         def get_by_text(self, text: str, exact: bool):
-            locator = f"text:{text}:{exact}"
+            locator = type(
+                "FakeTextLocator",
+                (),
+                {"first": f"text:{text}:{exact}:first"},
+            )()
+            calls.append(locator)
+            return locator
+
+        def locator(self, selector: str):
+            locator = type(
+                "FakeImageLocator",
+                (),
+                {"first": f"locator:{selector}:first"},
+            )()
             calls.append(locator)
             return locator
 
@@ -222,14 +235,18 @@ def test_marketplace_group_share_page_asserts_group_composer_content_ready(
         "Botitas de gamuza tipo desert"
     )
 
-    assert calls == [
+    assert calls[0:4] == [
         "composer_dialog",
         ("visible", composer_dialog, 5000),
         "button:Publicar",
         ("visible", "button:Publicar", 5000),
-        "text:Botitas de gamuza tipo desert:False",
-        ("visible", "text:Botitas de gamuza tipo desert:False", 10000),
     ]
+    assert calls[4].first == "text:Botitas de gamuza tipo desert:False:first"
+    assert calls[5] == (
+        "visible",
+        "text:Botitas de gamuza tipo desert:False:first",
+        10000,
+    )
 
 
 def test_marketplace_group_share_page_fails_when_group_composer_content_is_still_loading(
@@ -240,7 +257,18 @@ def test_marketplace_group_share_page_fails_when_group_composer_content_is_still
             return f"{role}:{name}"
 
         def get_by_text(self, text: str, exact: bool):
-            return f"text:{text}:{exact}"
+            return type(
+                "FakeTextLocator",
+                (),
+                {"first": f"text:{text}:{exact}:first"},
+            )()
+
+        def locator(self, selector: str):
+            return type(
+                "FakeImageLocator",
+                (),
+                {"first": f"locator:{selector}:first"},
+            )()
 
     class FakePage:
         pass
@@ -255,7 +283,7 @@ def test_marketplace_group_share_page_fails_when_group_composer_content_is_still
     )
 
     def fake_assert_locator_visible(locator, timeout_ms=5000):
-        if str(locator).startswith("text:"):
+        if str(locator).startswith("text:") or str(locator).startswith("locator:img"):
             raise RuntimeError("still loading")
 
     monkeypatch.setattr(
@@ -264,6 +292,54 @@ def test_marketplace_group_share_page_fails_when_group_composer_content_is_still
     )
 
     with pytest.raises(
-        ValueError, match="listing preview content is still loading or missing"
+        ValueError, match="publish content is still loading or missing"
     ):
         marketplace_page.assert_group_composer_content_ready("Botitas")
+
+
+def test_marketplace_group_share_page_accepts_visible_image_as_content_signal(
+    monkeypatch, tmp_path
+) -> None:
+    calls: list[tuple[str, str, int]] = []
+
+    class FakeComposerDialog:
+        def get_by_role(self, role: str, name: str):
+            return f"{role}:{name}"
+
+        def get_by_text(self, text: str, exact: bool):
+            return type(
+                "FakeTextLocator",
+                (),
+                {"first": f"text:{text}:{exact}:first"},
+            )()
+
+        def locator(self, selector: str):
+            return type(
+                "FakeImageLocator",
+                (),
+                {"first": f"locator:{selector}:first"},
+            )()
+
+    marketplace_page = MarketplaceGroupSharePage(
+        page=type("FakePage", (), {})(), screenshot_dir=tmp_path / "screenshots"
+    )
+    monkeypatch.setattr(
+        marketplace_page,
+        "get_visible_group_composer",
+        lambda: FakeComposerDialog(),
+    )
+
+    def fake_assert_locator_visible(locator, timeout_ms=5000):
+        locator_str = str(locator)
+        calls.append(("visible", locator_str, timeout_ms))
+        if locator_str.startswith("text:"):
+            raise RuntimeError("multiple text matches")
+
+    monkeypatch.setattr(
+        "src.pages.marketplace_group_share_page.assert_locator_visible",
+        fake_assert_locator_visible,
+    )
+
+    marketplace_page.assert_group_composer_content_ready("Botitas")
+
+    assert ("visible", "locator:img:first", 10000) in calls

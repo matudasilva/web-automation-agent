@@ -13,6 +13,7 @@ def test_get_settings_reads_browser_profile_and_manual_ready(monkeypatch) -> Non
     monkeypatch.setenv("SCREENSHOT_DIR", "./screenshots")
     monkeypatch.setenv("ALLOWED_DOMAIN", "facebook.com")
     monkeypatch.setenv("WAIT_FOR_MANUAL_READY", "true")
+    monkeypatch.setenv("WAIT_FOR_MANUAL_PUBLISH_CONFIRMATION", "true")
     monkeypatch.setenv("MARKETPLACE_LISTING_TITLE", "Botitas de gamuza tipo desert")
     monkeypatch.setenv("MARKETPLACE_GROUP_NAME", "Las Piedras, la paz Progreso, Colon")
     get_settings.cache_clear()
@@ -28,6 +29,7 @@ def test_get_settings_reads_browser_profile_and_manual_ready(monkeypatch) -> Non
     assert settings.screenshot_dir == Path("./screenshots")
     assert settings.allowed_domain == "facebook.com"
     assert settings.wait_for_manual_ready is True
+    assert settings.wait_for_manual_publish_confirmation is True
     assert settings.marketplace_listing_title == "Botitas de gamuza tipo desert"
     assert settings.marketplace_group_name == "Las Piedras, la paz Progreso, Colon"
     get_settings.cache_clear()

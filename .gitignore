@@ -3,8 +3,9 @@ __pycache__/
 .pytest_cache/
 *.pyc
 .venv/
+*.egg-info/
 
-# Env
+# Local environment and secrets
 .env
 .env.*
 .env.local
@@ -15,14 +16,17 @@ __pycache__/
 *.crt
 *.p12
 
-# Playwright / logs / artifacts
+# Runtime artifacts
 logs/
 !logs/.gitkeep
 screenshots/
 playwright-report/
 test-results/
-*.egg-info/
+runtime/*
+!runtime/.gitkeep
 
+# Private working docs
+docs/private/
 
 # IDE
 .vscode/
@@ -30,12 +34,3 @@ test-results/
 # OS
 .DS_Store
 *.swp
-
-# Local runtime state
-runtime/*
-!runtime/.gitkeep
-screenshots/
-
-
-# Private working docs
-docs/private/

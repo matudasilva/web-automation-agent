@@ -122,13 +122,22 @@ class MarketplaceGroupSharePage(BasePage):
             "button", name=self.labels.publish_button
         )
         assert_locator_visible(publish_button)
-        listing_preview = composer_dialog.get_by_text(listing_title, exact=False)
+
+        listing_preview = composer_dialog.get_by_text(listing_title, exact=False).first
         try:
             assert_locator_visible(
                 listing_preview, timeout_ms=self.composer_content_timeout_ms
             )
-        except Exception as exc:
-            raise ValueError(
-                "Group composer is visible but the listing preview content is still loading "
-                f"or missing for title fragment '{listing_title}'"
-            ) from exc
+            return
+        except Exception as title_exc:
+            preview_image = composer_dialog.locator("img").first
+            try:
+                assert_locator_visible(
+                    preview_image, timeout_ms=self.composer_content_timeout_ms
+                )
+                return
+            except Exception as image_exc:
+                raise ValueError(
+                    "Group composer is visible but the publish content is still loading "
+                    f"or missing for title fragment '{listing_title}'"
+                ) from image_exc

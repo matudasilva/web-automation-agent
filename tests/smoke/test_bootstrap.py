@@ -20,6 +20,7 @@ def test_bootstrap_runs_landing_flow(tmp_path, monkeypatch, caplog) -> None:
         screenshot_dir=screenshot_dir,
         allowed_domain="example.com",
         wait_for_manual_ready=False,
+        wait_for_manual_publish_confirmation=False,
         marketplace_listing_title="Botitas de gamuza tipo desert",
         marketplace_group_name="Las Piedras, la paz Progreso, Colon",
     )
@@ -116,6 +117,7 @@ def test_bootstrap_waits_for_manual_ready_when_enabled(
         screenshot_dir=screenshot_dir,
         allowed_domain="facebook.com",
         wait_for_manual_ready=True,
+        wait_for_manual_publish_confirmation=False,
         marketplace_listing_title="Botitas de gamuza tipo desert",
         marketplace_group_name="Las Piedras, la paz Progreso, Colon",
     )
@@ -166,3 +168,79 @@ def test_bootstrap_waits_for_manual_ready_when_enabled(
     assert page.goto_calls == [("https://www.facebook.com", "domcontentloaded")]
     assert prompts == ["Manual login/session ready. Press Enter to continue..."]
     assert "manual_ready_waiting_for_enter" in caplog.text
+
+
+def test_bootstrap_waits_for_manual_publish_confirmation_when_enabled(
+    tmp_path, monkeypatch, caplog
+) -> None:
+    screenshot_dir = tmp_path / "screenshots"
+    artifact_dir = screenshot_dir / "run-789"
+    settings = Settings(
+        base_url="https://www.facebook.com",
+        browser="firefox",
+        headless=False,
+        browser_profile_dir=tmp_path / "profile",
+        screenshot_dir=screenshot_dir,
+        allowed_domain="facebook.com",
+        wait_for_manual_ready=False,
+        wait_for_manual_publish_confirmation=True,
+        marketplace_listing_title="Botitas de gamuza tipo desert",
+        marketplace_group_name="Las Piedras, la paz Progreso, Colon",
+    )
+    page = object()
+
+    class FakeContextManager:
+        def __enter__(self):
+            return page
+
+        def __exit__(self, exc_type, exc, tb):
+            return None
+
+    monkeypatch.setattr("src.main.get_settings", lambda: settings)
+    monkeypatch.setattr("src.main.browser_session", lambda _settings: FakeContextManager())
+    monkeypatch.setattr("src.main.configure_logging", lambda: None)
+    monkeypatch.setattr(
+        "src.main.create_run_context",
+        lambda _artifact_base_dir: RunContext(run_id="run-789", artifact_dir=artifact_dir),
+    )
+    monkeypatch.setattr(
+        "src.main.run_landing_flow",
+        lambda page, settings, run_context, logger: FlowResult(
+            success=True,
+            step="capture_checkpoint",
+            current_url="https://www.facebook.com",
+            run_id="run-789",
+            artifact_dir=artifact_dir,
+            screenshot_path=artifact_dir / "landing_ready.png",
+        ),
+    )
+    monkeypatch.setattr(
+        "src.main.run_marketplace_group_share_flow",
+        lambda page, settings, run_context, logger, listing_title, group_name: FlowResult(
+            success=True,
+            step="capture_checkpoint",
+            current_url="https://www.facebook.com/marketplace/you/selling",
+            run_id="run-789",
+            artifact_dir=artifact_dir,
+            screenshot_path=artifact_dir / "marketplace_group_share_ready.png",
+        ),
+    )
+    prompts: list[str] = []
+    screenshots: list[tuple[object, Path, str]] = []
+    monkeypatch.setattr("builtins.input", lambda prompt: prompts.append(prompt) or "")
+    monkeypatch.setattr(
+        "src.main.capture_page_screenshot",
+        lambda page, screenshot_dir, name: screenshots.append(
+            (page, screenshot_dir, name)
+        )
+        or artifact_dir / f"{name}.png",
+    )
+    caplog.set_level(logging.INFO, logger="src.main")
+
+    run_bootstrap()
+
+    assert prompts == [
+        "Composer listo. Haz clic manualmente en Publicar, verifica que la publicación se haya enviado correctamente y luego presiona Enter para finalizar."
+    ]
+    assert screenshots == [(page, artifact_dir, "manual_publish_confirmed")]
+    assert "marketplace_group_share_flow_manual_publish_handoff" in caplog.text
