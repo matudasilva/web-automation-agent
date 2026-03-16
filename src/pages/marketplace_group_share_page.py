@@ -28,6 +28,7 @@ class MarketplaceGroupShareLabels:
 
 class MarketplaceGroupSharePage(BasePage):
     composer_content_timeout_ms = 10000
+    group_picker_retry_timeout_ms = 2000
 
     def __init__(self, page: Page, screenshot_dir: Path) -> None:
         super().__init__(page=page, screenshot_dir=screenshot_dir)
@@ -77,7 +78,7 @@ class MarketplaceGroupSharePage(BasePage):
         share_button = listing_container.get_by_role(
             "button", name=self.labels.share_button
         )
-        click_locator_visible(share_button)
+        click_locator_visible(share_button, page=self.page)
 
     def assert_share_dialog_visible(self) -> None:
         assert_locator_visible(self.find_share_dialog())
@@ -87,24 +88,38 @@ class MarketplaceGroupSharePage(BasePage):
         group_option = share_dialog.get_by_text(
             self.labels.group_destination, exact=True
         )
-        click_locator_visible(group_option)
+        click_locator_visible(group_option, page=self.page)
 
-    def find_group_picker_dialog(self) -> Locator:
+    def find_group_picker_dialog(self, timeout_ms: int = 5000) -> Locator:
         group_picker_heading = self.page.get_by_role(
             "heading", name=self.labels.group_picker_heading
         )
         group_picker_dialog = self.page.locator("[role='dialog']").filter(
             has=group_picker_heading
         ).first
-        return wait_for_locator_visible(group_picker_dialog)
+        return wait_for_locator_visible(group_picker_dialog, timeout_ms=timeout_ms)
 
-    def assert_group_picker_visible(self) -> None:
-        assert_locator_visible(self.find_group_picker_dialog())
+    def assert_group_picker_visible(self, timeout_ms: int = 5000) -> None:
+        assert_locator_visible(
+            self.find_group_picker_dialog(timeout_ms=timeout_ms), timeout_ms=timeout_ms
+        )
+
+    def get_current_dialog_heading_text(self) -> str | None:
+        dialog_heading = self.page.locator("[role='dialog'] [role='heading']").first
+        try:
+            heading_text = dialog_heading.text_content()
+        except Exception:
+            return None
+
+        if heading_text is None:
+            return None
+        normalized = heading_text.strip()
+        return normalized or None
 
     def select_group(self, group_name: str) -> None:
         group_picker_dialog = self.find_group_picker_dialog()
         group_option = group_picker_dialog.get_by_text(group_name, exact=True)
-        click_locator_visible(group_option)
+        click_locator_visible(group_option, page=self.page)
 
     def get_visible_group_composer(self) -> Locator:
         composer_heading = self.page.get_by_role(

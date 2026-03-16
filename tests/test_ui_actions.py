@@ -3,11 +3,13 @@ from __future__ import annotations
 import pytest
 
 from src.browser.ui_actions import (
+    DEFAULT_UI_ACTION_DELAY_MS,
     DEFAULT_TIMEOUT_MS,
     assert_locator_visible,
     assert_visible,
     click_locator_visible,
     click_visible,
+    configure_ui_action_delay,
     fill_visible,
     wait_for_locator_visible,
     wait_for_visible,
@@ -34,10 +36,14 @@ class FakePage:
     def __init__(self, locator: FakeLocator) -> None:
         self._locator = locator
         self.locator_calls: list[str] = []
+        self.timeout_calls: list[int] = []
 
     def locator(self, selector: str) -> FakeLocator:
         self.locator_calls.append(selector)
         return self._locator
+
+    def wait_for_timeout(self, timeout_ms: int) -> None:
+        self.timeout_calls.append(timeout_ms)
 
 
 def test_wait_for_visible_returns_locator_after_waiting() -> None:
@@ -55,22 +61,26 @@ def test_click_visible_waits_before_clicking() -> None:
     locator = FakeLocator()
     page = FakePage(locator)
 
+    configure_ui_action_delay(250)
     click_visible(page=page, selector="#submit", timeout_ms=2000)
 
     assert page.locator_calls == ["#submit"]
     assert locator.wait_calls == [("visible", 2000)]
     assert locator.click_calls == 1
+    assert page.timeout_calls == [250]
 
 
 def test_fill_visible_waits_before_filling() -> None:
     locator = FakeLocator()
     page = FakePage(locator)
 
+    configure_ui_action_delay(300)
     fill_visible(page=page, selector="input[name='email']", value="user@example.com")
 
     assert page.locator_calls == ["input[name='email']"]
     assert locator.wait_calls == [("visible", DEFAULT_TIMEOUT_MS)]
     assert locator.fill_calls == ["user@example.com"]
+    assert page.timeout_calls == [300]
 
 
 def test_assert_visible_waits_for_selector() -> None:
@@ -106,11 +116,14 @@ def test_wait_for_locator_visible_returns_locator_after_waiting() -> None:
 
 def test_click_locator_visible_waits_before_clicking() -> None:
     locator = FakeLocator()
+    page = FakePage(locator)
 
-    click_locator_visible(locator=locator)
+    configure_ui_action_delay(400)
+    click_locator_visible(locator=locator, page=page)
 
     assert locator.wait_calls == [("visible", DEFAULT_TIMEOUT_MS)]
     assert locator.click_calls == 1
+    assert page.timeout_calls == [400]
 
 
 def test_assert_locator_visible_waits_for_locator() -> None:
@@ -119,3 +132,18 @@ def test_assert_locator_visible_waits_for_locator() -> None:
     assert_locator_visible(locator=locator, timeout_ms=2500)
 
     assert locator.wait_calls == [("visible", 2500)]
+
+
+def test_click_visible_skips_delay_when_configured_zero() -> None:
+    locator = FakeLocator()
+    page = FakePage(locator)
+
+    configure_ui_action_delay(0)
+    click_visible(page=page, selector="#submit")
+
+    assert page.timeout_calls == []
+
+
+@pytest.fixture(autouse=True)
+def reset_ui_action_delay() -> None:
+    configure_ui_action_delay(DEFAULT_UI_ACTION_DELAY_MS)

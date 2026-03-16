@@ -23,6 +23,11 @@ class Settings(BaseModel):
     allowed_domain: str = Field(default="example.com")
     wait_for_manual_ready: bool = Field(default=False)
     wait_for_manual_publish_confirmation: bool = Field(default=False)
+    ui_action_delay_ms: int = Field(default=700)
+    ui_iteration_delay_ms: int = Field(default=1500)
+    marketplace_group_targets_file: Path = Field(
+        default=Path("./runtime/group_targets.txt")
+    )
     marketplace_listing_title: str = Field(default="")
     marketplace_group_name: str = Field(default="")
 
@@ -45,6 +50,11 @@ def get_settings() -> Settings:
         wait_for_manual_ready=_read_bool("WAIT_FOR_MANUAL_READY", False),
         wait_for_manual_publish_confirmation=_read_bool(
             "WAIT_FOR_MANUAL_PUBLISH_CONFIRMATION", False
+        ),
+        ui_action_delay_ms=_read_int("UI_ACTION_DELAY_MS", 700),
+        ui_iteration_delay_ms=_read_int("UI_ITERATION_DELAY_MS", 1500),
+        marketplace_group_targets_file=Path(
+            _read_env("MARKETPLACE_GROUP_TARGETS_FILE", "./runtime/group_targets.txt")
         ),
         marketplace_listing_title=_read_env("MARKETPLACE_LISTING_TITLE", ""),
         marketplace_group_name=_read_env("MARKETPLACE_GROUP_NAME", ""),
@@ -103,3 +113,19 @@ def _read_optional_path(name: str) -> Path | None:
     if not normalized:
         return None
     return Path(normalized)
+
+
+def _read_int(name: str, default: int) -> int:
+    from os import getenv
+
+    value = getenv(name)
+    if value is None:
+        return default
+
+    normalized = value.strip()
+    if not normalized:
+        return default
+    try:
+        return int(normalized)
+    except ValueError:
+        return default
