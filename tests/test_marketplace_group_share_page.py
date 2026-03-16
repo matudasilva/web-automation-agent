@@ -72,46 +72,740 @@ def test_marketplace_group_share_page_requires_expected_management_path(tmp_path
         )
 
 
-def test_marketplace_group_share_page_opens_share_within_listing_container(
+def test_marketplace_group_share_page_opens_matching_listing_share_button(
     monkeypatch, tmp_path
 ) -> None:
     calls: list[object] = []
 
-    class FakeShareButton:
-        pass
+    class FakeButton:
+        def __init__(self, aria_label: str) -> None:
+            self.aria_label = aria_label
 
-    class FakeListingContainer:
-        def get_by_role(self, role: str, name: str) -> FakeShareButton:
-            calls.append((role, name))
-            return share_button
+        def is_visible(self) -> bool:
+            return True
+
+        def get_attribute(self, name: str) -> str | None:
+            if name != "aria-label":
+                return None
+            return self.aria_label
+
+        def text_content(self) -> str:
+            return self.aria_label
+
+        def wait_for(self, state: str, timeout: int) -> None:
+            calls.append((state, timeout))
+
+    class FakeButtonLocatorGroup:
+        def __init__(self, buttons: list[FakeButton]) -> None:
+            self._buttons = buttons
+            self.first = buttons[0]
+
+        def count(self) -> int:
+            return len(self._buttons)
+
+        def nth(self, index: int) -> FakeButton:
+            return self._buttons[index]
 
     class FakePage:
-        pass
+        def __init__(self) -> None:
+            self.role_calls: list[tuple[str, object]] = []
+            self.mouse = type("FakeMouse", (), {"calls": []})()
+            self.evaluate_calls: list[str] = []
+            self.searchbox = None
 
-    share_button = FakeShareButton()
-    listing_container = FakeListingContainer()
+        def get_by_role(self, role: str, name):
+            if role in {"searchbox", "textbox"}:
+                return type(
+                    "HiddenSearchInput",
+                    (),
+                    {"first": type("HiddenSearchLocator", (), {"is_visible": lambda self: False})()},
+                )()
+            self.role_calls.append((role, name))
+            return FakeButtonLocatorGroup(
+                [
+                    FakeButton("Compartir Jarra cervecera de madera"),
+                    FakeButton("Compartir Botitas de gamuza tipo desert"),
+                ]
+            )
+
+        def evaluate(self, script: str):
+            self.evaluate_calls.append(script)
+            if script == "window.scrollY":
+                return 0
+            return None
+
+        def wait_for_timeout(self, timeout_ms: int) -> None:
+            calls.append(("wait_for_timeout", timeout_ms))
+
+    page = FakePage()
     marketplace_page = MarketplaceGroupSharePage(
-        page=FakePage(), screenshot_dir=tmp_path / "screenshots"
-    )
-
-    monkeypatch.setattr(
-        marketplace_page,
-        "find_listing_container",
-        lambda listing_title: calls.append(("listing", listing_title))
-        or listing_container,
+        page=page, screenshot_dir=tmp_path / "screenshots"
     )
     monkeypatch.setattr(
         "src.pages.marketplace_group_share_page.click_locator_visible",
-        lambda locator: calls.append(locator),
+        lambda locator, page=None: calls.append(locator),
     )
 
     marketplace_page.open_listing_share_dialog("Botitas")
 
-    assert calls == [
-        ("listing", "Botitas"),
-        ("button", "Compartir"),
-        share_button,
+    assert page.role_calls[0][0] == "button"
+    assert calls[-1].aria_label == "Compartir Botitas de gamuza tipo desert"
+    assert page.mouse.calls == []
+    assert page.evaluate_calls == ["window.scrollTo(0, 0)", "window.scrollY"]
+
+
+def test_marketplace_group_share_page_finds_unique_matching_share_button_with_multiple_listings(
+    tmp_path,
+) -> None:
+    class FakeButton:
+        def __init__(self, aria_label: str, visible: bool = True) -> None:
+            self.aria_label = aria_label
+            self.visible = visible
+
+        def is_visible(self) -> bool:
+            return self.visible
+
+        def get_attribute(self, name: str) -> str | None:
+            if name != "aria-label":
+                return None
+            return self.aria_label
+
+        def text_content(self) -> str:
+            return self.aria_label
+
+        def wait_for(self, state: str, timeout: int) -> None:
+            return None
+
+    class FakeButtonLocatorGroup:
+        def __init__(self, buttons: list[FakeButton]) -> None:
+            self._buttons = buttons
+            self.first = buttons[0]
+
+        def count(self) -> int:
+            return len(self._buttons)
+
+        def nth(self, index: int) -> FakeButton:
+            return self._buttons[index]
+
+    class FakePage:
+        def get_by_role(self, role: str, name):
+            if role in {"searchbox", "textbox"}:
+                return type(
+                    "HiddenSearchInput",
+                    (),
+                    {"first": type("HiddenSearchLocator", (), {"is_visible": lambda self: False})()},
+                )()
+            return FakeButtonLocatorGroup(
+                [
+                    FakeButton("Compartir Jarra cervecera de madera"),
+                    FakeButton("Compartir Botitas de gamuza tipo desert"),
+                    FakeButton("Compartir Otro producto"),
+                ]
+            )
+
+        def evaluate(self, script: str):
+            if script == "window.scrollY":
+                return 0
+            return None
+
+        def wait_for_timeout(self, timeout_ms: int) -> None:
+            return None
+
+    marketplace_page = MarketplaceGroupSharePage(
+        page=FakePage(), screenshot_dir=tmp_path / "screenshots"
+    )
+
+    share_button = marketplace_page.find_listing_share_button("Botitas de gamuza")
+
+    assert share_button.get_attribute("aria-label") == (
+        "Compartir Botitas de gamuza tipo desert"
+    )
+
+
+def test_marketplace_group_share_page_finds_share_button_after_scroll_discovery(
+    tmp_path,
+) -> None:
+    class FakeButton:
+        def __init__(self, aria_label: str) -> None:
+            self.aria_label = aria_label
+
+        def is_visible(self) -> bool:
+            return True
+
+        def get_attribute(self, name: str) -> str | None:
+            if name != "aria-label":
+                return None
+            return self.aria_label
+
+        def text_content(self) -> str:
+            return self.aria_label
+
+        def wait_for(self, state: str, timeout: int) -> None:
+            return None
+
+    class FakeMouse:
+        def __init__(self, page) -> None:
+            self.page = page
+            self.calls: list[tuple[int, int]] = []
+
+        def wheel(self, delta_x: int, delta_y: int) -> None:
+            self.calls.append((delta_x, delta_y))
+            self.page.scroll_index += 1
+
+    class FakeButtonLocatorGroup:
+        def __init__(self, page) -> None:
+            self.page = page
+            self.first = page.button_sets[0][0]
+
+        def count(self) -> int:
+            return len(self.page.button_sets[self.page.scroll_index])
+
+        def nth(self, index: int) -> FakeButton:
+            return self.page.button_sets[self.page.scroll_index][index]
+
+    class FakePage:
+        def __init__(self) -> None:
+            self.scroll_index = 0
+            self.button_sets = [
+                [FakeButton("Compartir Jarra cervecera de madera")],
+                [FakeButton("Compartir Botitas de gamuza tipo desert")],
+            ]
+            self.mouse = FakeMouse(self)
+            self.timeout_calls: list[int] = []
+            self.evaluate_calls: list[str] = []
+
+        def get_by_role(self, role: str, name):
+            if role in {"searchbox", "textbox"}:
+                return type(
+                    "HiddenSearchInput",
+                    (),
+                    {"first": type("HiddenSearchLocator", (), {"is_visible": lambda self: False})()},
+                )()
+            return FakeButtonLocatorGroup(self)
+
+        def evaluate(self, script: str):
+            self.evaluate_calls.append(script)
+            if script == "window.scrollY":
+                return self.scroll_index * 1000
+            return None
+
+        def wait_for_timeout(self, timeout_ms: int) -> None:
+            self.timeout_calls.append(timeout_ms)
+
+    page = FakePage()
+    marketplace_page = MarketplaceGroupSharePage(
+        page=page, screenshot_dir=tmp_path / "screenshots"
+    )
+
+    share_button = marketplace_page.find_listing_share_button("Botitas")
+
+    assert share_button.get_attribute("aria-label") == (
+        "Compartir Botitas de gamuza tipo desert"
+    )
+    assert page.mouse.calls == [(0, marketplace_page.listing_discovery_scroll_y_px)]
+    assert page.timeout_calls == [marketplace_page.listing_discovery_scroll_delay_ms] * 2
+
+
+def test_marketplace_group_share_page_fails_when_share_button_match_is_not_unique(
+    tmp_path,
+) -> None:
+    class FakeButton:
+        def __init__(self, aria_label: str) -> None:
+            self.aria_label = aria_label
+
+        def is_visible(self) -> bool:
+            return True
+
+        def get_attribute(self, name: str) -> str | None:
+            if name != "aria-label":
+                return None
+            return self.aria_label
+
+        def text_content(self) -> str:
+            return self.aria_label
+
+        def wait_for(self, state: str, timeout: int) -> None:
+            return None
+
+    class FakeButtonLocatorGroup:
+        def __init__(self, buttons: list[FakeButton]) -> None:
+            self._buttons = buttons
+            self.first = buttons[0]
+
+        def count(self) -> int:
+            return len(self._buttons)
+
+        def nth(self, index: int) -> FakeButton:
+            return self._buttons[index]
+
+    class FakePage:
+        def get_by_role(self, role: str, name):
+            if role in {"searchbox", "textbox"}:
+                return type(
+                    "HiddenSearchInput",
+                    (),
+                    {"first": type("HiddenSearchLocator", (), {"is_visible": lambda self: False})()},
+                )()
+            return FakeButtonLocatorGroup(
+                [
+                    FakeButton("Compartir Botitas de gamuza tipo desert"),
+                    FakeButton("Compartir Botitas de gamuza tipo desert - otra copia"),
+                ]
+            )
+
+        def evaluate(self, script: str):
+            if script == "window.scrollY":
+                return 0
+            return None
+
+        def wait_for_timeout(self, timeout_ms: int) -> None:
+            return None
+
+    marketplace_page = MarketplaceGroupSharePage(
+        page=FakePage(), screenshot_dir=tmp_path / "screenshots"
+    )
+
+    with pytest.raises(ValueError, match="Expected a unique visible Marketplace share button"):
+        marketplace_page.find_listing_share_button("Botitas de gamuza")
+
+
+def test_marketplace_group_share_page_fails_after_exhausting_scroll_discovery(
+    tmp_path,
+) -> None:
+    class FakeButton:
+        def __init__(self, aria_label: str) -> None:
+            self.aria_label = aria_label
+
+        def is_visible(self) -> bool:
+            return True
+
+        def get_attribute(self, name: str) -> str | None:
+            if name != "aria-label":
+                return None
+            return self.aria_label
+
+        def text_content(self) -> str:
+            return self.aria_label
+
+        def wait_for(self, state: str, timeout: int) -> None:
+            return None
+
+    class FakeMouse:
+        def __init__(self, page) -> None:
+            self.page = page
+            self.calls: list[tuple[int, int]] = []
+
+        def wheel(self, delta_x: int, delta_y: int) -> None:
+            self.calls.append((delta_x, delta_y))
+            if self.page.scroll_index < len(self.page.button_sets) - 1:
+                self.page.scroll_index += 1
+
+    class FakeButtonLocatorGroup:
+        def __init__(self, page) -> None:
+            self.page = page
+            self.first = page.button_sets[0][0]
+
+        def count(self) -> int:
+            return len(self.page.button_sets[self.page.scroll_index])
+
+        def nth(self, index: int) -> FakeButton:
+            return self.page.button_sets[self.page.scroll_index][index]
+
+    class FakePage:
+        def __init__(self) -> None:
+            self.scroll_index = 0
+            self.button_sets = [
+                [FakeButton("Compartir Jarra cervecera de madera")],
+                [FakeButton("Compartir Otro producto")],
+                [FakeButton("Compartir Más artículos")],
+                [FakeButton("Compartir Último candidato visible")],
+            ]
+            self.mouse = FakeMouse(self)
+            self.timeout_calls: list[int] = []
+            self.evaluate_calls: list[str] = []
+
+        def get_by_role(self, role: str, name):
+            if role in {"searchbox", "textbox"}:
+                return type(
+                    "HiddenSearchInput",
+                    (),
+                    {"first": type("HiddenSearchLocator", (), {"is_visible": lambda self: False})()},
+                )()
+            return FakeButtonLocatorGroup(self)
+
+        def evaluate(self, script: str):
+            self.evaluate_calls.append(script)
+            if script == "window.scrollY":
+                return self.scroll_index * 1000
+            return None
+
+        def wait_for_timeout(self, timeout_ms: int) -> None:
+            self.timeout_calls.append(timeout_ms)
+
+    page = FakePage()
+    marketplace_page = MarketplaceGroupSharePage(
+        page=page, screenshot_dir=tmp_path / "screenshots"
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="found 0 matches after 4 discovery passes",
+    ):
+        marketplace_page.find_listing_share_button("Botitas")
+
+    assert page.mouse.calls == [
+        (0, marketplace_page.listing_discovery_scroll_y_px),
+        (0, marketplace_page.listing_discovery_scroll_y_px),
+        (0, marketplace_page.listing_discovery_scroll_y_px),
     ]
+
+
+def test_marketplace_group_share_page_stops_discovery_when_scroll_stalls(
+    tmp_path,
+) -> None:
+    class FakeButton:
+        def __init__(self, aria_label: str) -> None:
+            self.aria_label = aria_label
+
+        def is_visible(self) -> bool:
+            return True
+
+        def get_attribute(self, name: str) -> str | None:
+            if name != "aria-label":
+                return None
+            return self.aria_label
+
+        def text_content(self) -> str:
+            return self.aria_label
+
+        def wait_for(self, state: str, timeout: int) -> None:
+            return None
+
+    class FakeMouse:
+        def __init__(self) -> None:
+            self.calls: list[tuple[int, int]] = []
+
+        def wheel(self, delta_x: int, delta_y: int) -> None:
+            self.calls.append((delta_x, delta_y))
+
+    class FakeButtonLocatorGroup:
+        def __init__(self, page) -> None:
+            self.page = page
+            self.first = page.buttons[0]
+
+        def count(self) -> int:
+            return len(self.page.buttons)
+
+        def nth(self, index: int) -> FakeButton:
+            return self.page.buttons[index]
+
+    class FakePage:
+        def __init__(self) -> None:
+            self.buttons = [FakeButton("Compartir Otro producto")]
+            self.mouse = FakeMouse()
+            self.timeout_calls: list[int] = []
+
+        def get_by_role(self, role: str, name):
+            if role in {"searchbox", "textbox"}:
+                return type(
+                    "HiddenSearchInput",
+                    (),
+                    {"first": type("HiddenSearchLocator", (), {"is_visible": lambda self: False})()},
+                )()
+            return FakeButtonLocatorGroup(self)
+
+        def evaluate(self, script: str):
+            if script == "window.scrollY":
+                return 0
+            return None
+
+        def wait_for_timeout(self, timeout_ms: int) -> None:
+            self.timeout_calls.append(timeout_ms)
+
+    page = FakePage()
+    marketplace_page = MarketplaceGroupSharePage(
+        page=page, screenshot_dir=tmp_path / "screenshots"
+    )
+
+    with pytest.raises(ValueError, match="found 0 matches after 4 discovery passes"):
+        marketplace_page.find_listing_share_button("Botitas")
+
+    assert page.mouse.calls == [(0, marketplace_page.listing_discovery_scroll_y_px)]
+
+
+def test_marketplace_group_share_page_uses_search_as_primary_listing_strategy(
+    tmp_path,
+) -> None:
+    class FakeButton:
+        def __init__(self, aria_label: str) -> None:
+            self.aria_label = aria_label
+
+        def is_visible(self) -> bool:
+            return True
+
+        def get_attribute(self, name: str) -> str | None:
+            if name != "aria-label":
+                return None
+            return self.aria_label
+
+        def text_content(self) -> str:
+            return self.aria_label
+
+        def wait_for(self, state: str, timeout: int) -> None:
+            return None
+
+    class FakeSearchLocator:
+        def __init__(self, page) -> None:
+            self.page = page
+
+        def is_visible(self) -> bool:
+            return True
+
+        def fill(self, value: str) -> None:
+            self.page.search_terms.append(value)
+            self.page.filtered = value == "Botitas"
+
+    class FakeButtonLocatorGroup:
+        def __init__(self, page) -> None:
+            self.page = page
+            self.first = FakeButton("Compartir Botitas de gamuza tipo desert")
+
+        def count(self) -> int:
+            return len(self._current_buttons())
+
+        def nth(self, index: int) -> FakeButton:
+            return self._current_buttons()[index]
+
+        def _current_buttons(self) -> list[FakeButton]:
+            if self.page.filtered:
+                return [FakeButton("Compartir Botitas de gamuza tipo desert")]
+            return [
+                FakeButton("Compartir Jarra cervecera de madera"),
+                FakeButton("Compartir Otro producto"),
+            ]
+
+    class FakePage:
+        def __init__(self) -> None:
+            self.search_terms: list[str] = []
+            self.filtered = False
+            self.mouse = type(
+                "FakeMouse",
+                (),
+                {"calls": [], "wheel": lambda self, delta_x, delta_y: self.calls.append((delta_x, delta_y))},
+            )()
+
+        def get_by_role(self, role: str, name):
+            if role == "searchbox":
+                return type("SearchboxGroup", (), {"first": FakeSearchLocator(self)})()
+            if role == "textbox":
+                return type(
+                    "HiddenTextboxGroup",
+                    (),
+                    {"first": type("HiddenTextbox", (), {"is_visible": lambda self: False})()},
+                )()
+            return FakeButtonLocatorGroup(self)
+
+        def evaluate(self, script: str):
+            if script == "window.scrollY":
+                return 0
+            return None
+
+        def wait_for_timeout(self, timeout_ms: int) -> None:
+            return None
+
+    page = FakePage()
+    marketplace_page = MarketplaceGroupSharePage(
+        page=page, screenshot_dir=tmp_path / "screenshots"
+    )
+
+    share_button = marketplace_page.find_listing_share_button("Botitas")
+
+    assert share_button.get_attribute("aria-label") == (
+        "Compartir Botitas de gamuza tipo desert"
+    )
+    assert page.search_terms == ["", "Botitas"]
+    assert page.mouse.calls == []
+
+
+def test_marketplace_group_share_page_falls_back_to_scroll_when_search_has_no_result(
+    tmp_path,
+) -> None:
+    class FakeButton:
+        def __init__(self, aria_label: str) -> None:
+            self.aria_label = aria_label
+
+        def is_visible(self) -> bool:
+            return True
+
+        def get_attribute(self, name: str) -> str | None:
+            if name != "aria-label":
+                return None
+            return self.aria_label
+
+        def text_content(self) -> str:
+            return self.aria_label
+
+        def wait_for(self, state: str, timeout: int) -> None:
+            return None
+
+    class FakeSearchLocator:
+        def __init__(self, page) -> None:
+            self.page = page
+
+        def is_visible(self) -> bool:
+            return True
+
+        def fill(self, value: str) -> None:
+            self.page.search_terms.append(value)
+            self.page.filtered = value == "Botitas"
+
+    class FakeMouse:
+        def __init__(self, page) -> None:
+            self.page = page
+            self.calls: list[tuple[int, int]] = []
+
+        def wheel(self, delta_x: int, delta_y: int) -> None:
+            self.calls.append((delta_x, delta_y))
+            self.page.scroll_index += 1
+
+    class FakeButtonLocatorGroup:
+        def __init__(self, page) -> None:
+            self.page = page
+            self.first = FakeButton("Compartir Otro producto")
+
+        def count(self) -> int:
+            return len(self._current_buttons())
+
+        def nth(self, index: int) -> FakeButton:
+            return self._current_buttons()[index]
+
+        def _current_buttons(self) -> list[FakeButton]:
+            if self.page.filtered:
+                return [FakeButton("Compartir Otro producto")]
+            button_sets = [
+                [FakeButton("Compartir Jarra cervecera de madera")],
+                [FakeButton("Compartir Botitas de gamuza tipo desert")],
+            ]
+            return button_sets[self.page.scroll_index]
+
+    class FakePage:
+        def __init__(self) -> None:
+            self.search_terms: list[str] = []
+            self.filtered = False
+            self.scroll_index = 0
+            self.mouse = FakeMouse(self)
+            self.timeout_calls: list[int] = []
+
+        def get_by_role(self, role: str, name):
+            if role == "searchbox":
+                return type("SearchboxGroup", (), {"first": FakeSearchLocator(self)})()
+            if role == "textbox":
+                return type(
+                    "HiddenTextboxGroup",
+                    (),
+                    {"first": type("HiddenTextbox", (), {"is_visible": lambda self: False})()},
+                )()
+            return FakeButtonLocatorGroup(self)
+
+        def evaluate(self, script: str):
+            if script == "window.scrollY":
+                return self.scroll_index * 1000
+            return None
+
+        def wait_for_timeout(self, timeout_ms: int) -> None:
+            self.timeout_calls.append(timeout_ms)
+            if self.filtered and len(self.search_terms) >= 2 and self.search_terms[-1] == "":
+                self.filtered = False
+
+    page = FakePage()
+    marketplace_page = MarketplaceGroupSharePage(
+        page=page, screenshot_dir=tmp_path / "screenshots"
+    )
+
+    share_button = marketplace_page.find_listing_share_button("Botitas")
+
+    assert share_button.get_attribute("aria-label") == (
+        "Compartir Botitas de gamuza tipo desert"
+    )
+    assert page.search_terms == ["", "Botitas", ""]
+    assert page.mouse.calls == [(0, marketplace_page.listing_discovery_scroll_y_px)]
+
+
+def test_marketplace_group_share_page_fails_when_search_returns_multiple_matches(
+    tmp_path,
+) -> None:
+    class FakeButton:
+        def __init__(self, aria_label: str) -> None:
+            self.aria_label = aria_label
+
+        def is_visible(self) -> bool:
+            return True
+
+        def get_attribute(self, name: str) -> str | None:
+            if name != "aria-label":
+                return None
+            return self.aria_label
+
+        def text_content(self) -> str:
+            return self.aria_label
+
+        def wait_for(self, state: str, timeout: int) -> None:
+            return None
+
+    class FakeSearchLocator:
+        def is_visible(self) -> bool:
+            return True
+
+        def fill(self, value: str) -> None:
+            return None
+
+    class FakeButtonLocatorGroup:
+        def __init__(self) -> None:
+            self.first = FakeButton("Compartir Botitas de gamuza tipo desert")
+
+        def count(self) -> int:
+            return 2
+
+        def nth(self, index: int) -> FakeButton:
+            buttons = [
+                FakeButton("Compartir Botitas de gamuza tipo desert"),
+                FakeButton("Compartir Botitas de gamuza tipo desert - otra copia"),
+            ]
+            return buttons[index]
+
+    class FakePage:
+        def __init__(self) -> None:
+            self.mouse = type(
+                "FakeMouse",
+                (),
+                {"calls": [], "wheel": lambda self, delta_x, delta_y: self.calls.append((delta_x, delta_y))},
+            )()
+
+        def get_by_role(self, role: str, name):
+            if role == "searchbox":
+                return type("SearchboxGroup", (), {"first": FakeSearchLocator()})()
+            if role == "textbox":
+                return type(
+                    "HiddenTextboxGroup",
+                    (),
+                    {"first": type("HiddenTextbox", (), {"is_visible": lambda self: False})()},
+                )()
+            return FakeButtonLocatorGroup()
+
+        def evaluate(self, script: str):
+            if script == "window.scrollY":
+                return 0
+            return None
+
+        def wait_for_timeout(self, timeout_ms: int) -> None:
+            return None
+
+    marketplace_page = MarketplaceGroupSharePage(
+        page=FakePage(), screenshot_dir=tmp_path / "screenshots"
+    )
+
+    with pytest.raises(ValueError, match="after search, but found 2 matches"):
+        marketplace_page.find_listing_share_button("Botitas")
 
 
 def test_marketplace_group_share_page_opens_group_destination(
@@ -139,7 +833,7 @@ def test_marketplace_group_share_page_opens_group_destination(
     )
     monkeypatch.setattr(
         "src.pages.marketplace_group_share_page.click_locator_visible",
-        lambda locator: calls.append(locator),
+        lambda locator, page=None: calls.append(locator),
     )
 
     marketplace_page.open_group_destination()
@@ -172,7 +866,7 @@ def test_marketplace_group_share_page_selects_group_within_group_picker(
     )
     monkeypatch.setattr(
         "src.pages.marketplace_group_share_page.click_locator_visible",
-        lambda locator: calls.append(locator),
+        lambda locator, page=None: calls.append(locator),
     )
 
     marketplace_page.select_group("Las Piedras, la paz Progreso, Colon")

@@ -25,6 +25,8 @@ class Settings(BaseModel):
     wait_for_manual_publish_confirmation: bool = Field(default=False)
     ui_action_delay_ms: int = Field(default=700)
     ui_iteration_delay_ms: int = Field(default=1500)
+    marketplace_listing_discovery_max_scrolls: int = Field(default=3)
+    marketplace_listing_discovery_scroll_delay_ms: int = Field(default=400)
     marketplace_group_targets_file: Path = Field(
         default=Path("./runtime/group_targets.txt")
     )
@@ -53,6 +55,12 @@ def get_settings() -> Settings:
         ),
         ui_action_delay_ms=_read_int("UI_ACTION_DELAY_MS", 700),
         ui_iteration_delay_ms=_read_int("UI_ITERATION_DELAY_MS", 1500),
+        marketplace_listing_discovery_max_scrolls=_read_int(
+            "MARKETPLACE_LISTING_DISCOVERY_MAX_SCROLLS", 3
+        ),
+        marketplace_listing_discovery_scroll_delay_ms=_read_int(
+            "MARKETPLACE_LISTING_DISCOVERY_SCROLL_DELAY_MS", 400
+        ),
         marketplace_group_targets_file=Path(
             _read_env("MARKETPLACE_GROUP_TARGETS_FILE", "./runtime/group_targets.txt")
         ),

@@ -22,6 +22,10 @@ def run_marketplace_group_share_flow(
     marketplace_page = MarketplaceGroupSharePage(
         page=page, screenshot_dir=run_context.artifact_dir
     )
+    marketplace_page.configure_listing_discovery(
+        max_scrolls=settings.marketplace_listing_discovery_max_scrolls,
+        scroll_delay_ms=settings.marketplace_listing_discovery_scroll_delay_ms,
+    )
     selling_url = f"{settings.base_url.rstrip('/')}/marketplace/you/selling"
     current_step = "open_marketplace_selling"
     navigation_started = False
@@ -43,7 +47,7 @@ def run_marketplace_group_share_flow(
 
         current_step = "open_listing_share_dialog"
         logger.info("marketplace_group_share_flow_open_listing_share_dialog")
-        marketplace_page.open_listing_share_dialog(listing_title)
+        marketplace_page.open_listing_share_dialog(listing_title, logger=logger)
 
         current_step = "assert_share_dialog_visible"
         logger.info("marketplace_group_share_flow_assert_share_dialog_visible")
@@ -55,7 +59,45 @@ def run_marketplace_group_share_flow(
 
         current_step = "assert_group_picker_visible"
         logger.info("marketplace_group_share_flow_assert_group_picker_visible")
-        marketplace_page.assert_group_picker_visible()
+        try:
+            marketplace_page.assert_group_picker_visible(
+                timeout_ms=marketplace_page.group_picker_retry_timeout_ms
+            )
+        except Exception as first_exc:
+            current_dialog_heading = marketplace_page.get_current_dialog_heading_text()
+            logger.warning(
+                "marketplace_group_share_flow_group_picker_first_attempt_failed current_dialog_heading=%s",
+                current_dialog_heading,
+            )
+            marketplace_page.capture_checkpoint(
+                name="marketplace_group_picker_first_attempt_failed"
+            )
+            if marketplace_page.is_share_dialog_visible():
+                logger.info(
+                    "marketplace_group_share_flow_retrying_open_group_destination"
+                )
+                marketplace_page.open_group_destination()
+            else:
+                logger.info(
+                    "marketplace_group_share_flow_reopening_share_dialog_before_retry"
+                )
+                marketplace_page.open_listing_share_dialog(listing_title, logger=logger)
+                marketplace_page.assert_share_dialog_visible()
+                marketplace_page.open_group_destination()
+            try:
+                marketplace_page.assert_group_picker_visible()
+            except Exception as second_exc:
+                current_dialog_heading = marketplace_page.get_current_dialog_heading_text()
+                logger.warning(
+                    "marketplace_group_share_flow_group_picker_second_attempt_failed current_dialog_heading=%s",
+                    current_dialog_heading,
+                )
+                marketplace_page.capture_checkpoint(
+                    name="marketplace_group_picker_second_attempt_failed"
+                )
+                raise RuntimeError(
+                    "Group picker did not open after retrying the share dialog transition"
+                ) from second_exc
 
         current_step = "select_group"
         logger.info("marketplace_group_share_flow_select_group")
