@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from src.browser.factory import browser_session
 from src.browser.ui_actions import configure_ui_action_delay
 from src.core.config import get_settings, validate_allowed_domain
+from src.core.post_publish_status import PostPublishOutcome
 from src.core.logging import configure_logging, get_logger
 from src.flows.execution_summary import log_flow_execution_summary
 from src.flows.flow_result import FlowResult
 from src.flows.landing_flow import run_landing_flow
 from src.flows.marketplace_group_share_flow import run_marketplace_group_share_flow
 from src.flows.run_context import RunContext, create_run_context
+from src.pages.marketplace_group_share_page import MarketplaceGroupSharePage
 from src.services.screenshot_service import capture_page_screenshot
 
 
@@ -64,17 +67,30 @@ def wait_for_manual_ready(*, page, base_url: str, logger) -> None:
     input("Manual login/session ready. Press Enter to continue...")
 
 
-def wait_for_manual_publish_confirmation(*, page, screenshot_dir: Path, logger) -> None:
+def wait_for_manual_publish_confirmation(
+    *, page, screenshot_dir: Path, logger
+) -> tuple[PostPublishOutcome, Path]:
     logger.info("marketplace_group_share_flow_manual_publish_handoff")
     input(
         "Composer listo. Haz clic manualmente en Publicar, verifica que la publicación "
         "se haya enviado correctamente y luego presiona Enter para finalizar."
     )
-    capture_page_screenshot(
+    marketplace_page = MarketplaceGroupSharePage(
+        page=page, screenshot_dir=screenshot_dir
+    )
+    post_publish_outcome = marketplace_page.detect_post_publish_status()
+    logger.info(
+        "marketplace_group_share_flow_manual_publish_result status=%s signal=%s observed_text=%s",
+        post_publish_outcome.status,
+        post_publish_outcome.signal,
+        post_publish_outcome.observed_text,
+    )
+    screenshot_path = capture_page_screenshot(
         page=page,
         screenshot_dir=screenshot_dir,
-        name="manual_publish_confirmed",
+        name="manual_publish_result",
     )
+    return post_publish_outcome, screenshot_path
 
 
 def run_marketplace_group_share_batch(
@@ -100,19 +116,23 @@ def run_marketplace_group_share_batch(
             listing_title=settings.marketplace_listing_title,
             group_name=group_name,
         )
+        if settings.wait_for_manual_publish_confirmation:
+            post_publish_outcome, screenshot_path = wait_for_manual_publish_confirmation(
+                page=page,
+                screenshot_dir=iteration_run_context.artifact_dir,
+                logger=logger,
+            )
+            flow_result = replace(
+                flow_result,
+                screenshot_path=screenshot_path,
+                post_publish_outcome=post_publish_outcome,
+            )
+        last_flow_result = flow_result
         log_flow_execution_summary(
             logger=logger,
             flow_name="marketplace_group_share_flow",
             flow_result=flow_result,
         )
-
-        if settings.wait_for_manual_publish_confirmation:
-            wait_for_manual_publish_confirmation(
-                page=page,
-                screenshot_dir=iteration_run_context.artifact_dir,
-                logger=logger,
-            )
-        last_flow_result = flow_result
         if index < total_groups:
             page.wait_for_timeout(settings.ui_iteration_delay_ms)
 

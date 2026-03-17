@@ -11,5 +11,4 @@ snapshot:
 	./scripts/project_snapshot.sh
 
 # after close an important blok execute on terminal
-# make snapshot
-# make test-log
+# make snapshot && make test-log
