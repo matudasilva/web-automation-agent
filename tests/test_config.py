@@ -14,6 +14,7 @@ def test_get_settings_reads_browser_profile_and_manual_ready(monkeypatch) -> Non
     monkeypatch.setenv("ALLOWED_DOMAIN", "facebook.com")
     monkeypatch.setenv("WAIT_FOR_MANUAL_READY", "true")
     monkeypatch.setenv("WAIT_FOR_MANUAL_PUBLISH_CONFIRMATION", "true")
+    monkeypatch.setenv("AUTO_PUBLISH_TO_GROUPS", "true")
     monkeypatch.setenv("UI_ACTION_DELAY_MS", "700")
     monkeypatch.setenv("UI_ITERATION_DELAY_MS", "1500")
     monkeypatch.setenv("MARKETPLACE_LISTING_DISCOVERY_MAX_SCROLLS", "4")
@@ -35,6 +36,7 @@ def test_get_settings_reads_browser_profile_and_manual_ready(monkeypatch) -> Non
     assert settings.allowed_domain == "facebook.com"
     assert settings.wait_for_manual_ready is True
     assert settings.wait_for_manual_publish_confirmation is True
+    assert settings.auto_publish_to_groups is True
     assert settings.ui_action_delay_ms == 700
     assert settings.ui_iteration_delay_ms == 1500
     assert settings.marketplace_listing_discovery_max_scrolls == 4
@@ -42,4 +44,14 @@ def test_get_settings_reads_browser_profile_and_manual_ready(monkeypatch) -> Non
     assert settings.marketplace_group_targets_file == Path("./runtime/group_targets.txt")
     assert settings.marketplace_listing_title == "Botitas de gamuza tipo desert"
     assert settings.marketplace_group_name == "Las Piedras, la paz Progreso, Colon"
+    get_settings.cache_clear()
+
+
+def test_get_settings_reads_explicit_manual_auto_publish_setting(monkeypatch) -> None:
+    monkeypatch.setenv("AUTO_PUBLISH_TO_GROUPS", "false")
+    get_settings.cache_clear()
+
+    settings = get_settings()
+
+    assert settings.auto_publish_to_groups is False
     get_settings.cache_clear()

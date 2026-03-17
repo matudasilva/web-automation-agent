@@ -5,6 +5,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
+from time import monotonic
 from urllib.parse import urlparse
 
 from playwright.sync_api import Locator, Page
@@ -36,8 +37,11 @@ class MarketplaceGroupSharePage(BasePage):
     group_destination_transition_timeout_ms = 1500
     listing_search_settle_delay_ms = 700
     listing_search_retry_delay_ms = 250
+    listing_share_click_settle_delay_ms = 350
     group_picker_search_settle_delay_ms = 500
     group_picker_search_retry_delay_ms = 300
+    post_publish_signal_timeout_ms = 5000
+    post_publish_signal_poll_interval_ms = 200
     listing_discovery_max_scrolls = 3
     listing_discovery_scroll_y_px = 1200
     listing_discovery_scroll_delay_ms = 400
@@ -355,6 +359,8 @@ class MarketplaceGroupSharePage(BasePage):
         except Exception:
             self.capture_checkpoint(name="marketplace_listing_discovery_failed")
             raise
+        self._scroll_locator_into_view_if_needed(share_button)
+        self.page.wait_for_timeout(self.listing_share_click_settle_delay_ms)
         click_locator_visible(share_button, page=self.page)
 
     def reset_listing_discovery_position(self) -> None:
@@ -535,7 +541,6 @@ class MarketplaceGroupSharePage(BasePage):
             or "Visible group option candidates: ['Volver', 'Cerrar']" in error_text
         )
 
-
     def get_visible_group_composer(self) -> Locator:
         composer_heading = self.page.get_by_role(
             "heading", name=self.labels.composer_heading
@@ -554,6 +559,55 @@ class MarketplaceGroupSharePage(BasePage):
         ).first
         try:
             return composer_dialog.is_visible()
+        except Exception:
+            return False
+
+    def publish_group_composer(self) -> None:
+        publish_button = self.find_publish_button()
+        self._scroll_locator_into_view_if_needed(publish_button)
+        click_locator_visible(publish_button, page=self.page)
+
+    def find_publish_button(self) -> Locator:
+        composer_dialog = self.get_visible_group_composer()
+        publish_buttons = composer_dialog.get_by_role(
+            "button", name=self.labels.publish_button
+        )
+        matching_buttons: list[Locator] = []
+
+        for index in range(publish_buttons.count()):
+            candidate_button = publish_buttons.nth(index)
+            if not self._is_locator_visible(candidate_button):
+                continue
+            if not self._is_locator_enabled(candidate_button):
+                continue
+            matching_buttons.append(candidate_button)
+
+        if len(matching_buttons) == 1:
+            return matching_buttons[0]
+        if len(matching_buttons) > 1:
+            raise ValueError(
+                "Expected a unique visible enabled Marketplace publish button in the "
+                f"group composer, but found {len(matching_buttons)} matches"
+            )
+        raise ValueError(
+            "Could not resolve a visible enabled Marketplace publish button in the "
+            "group composer"
+        )
+
+    def wait_for_post_publish_signal(self) -> None:
+        deadline = monotonic() + (self.post_publish_signal_timeout_ms / 1000)
+        while monotonic() < deadline:
+            if self.get_visible_toast_text() is not None:
+                return
+            if self.get_visible_error_text() is not None:
+                return
+            if not self.is_group_composer_visible():
+                return
+            self.page.wait_for_timeout(self.post_publish_signal_poll_interval_ms)
+
+    def _is_locator_enabled(self, locator: Locator) -> bool:
+        try:
+            return locator.is_enabled()
         except Exception:
             return False
 

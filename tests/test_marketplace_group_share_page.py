@@ -151,6 +151,10 @@ def test_marketplace_group_share_page_opens_matching_listing_share_button(
 
     assert page.role_calls[0][0] == "button"
     assert calls[-1].aria_label == "Compartir Botitas de gamuza tipo desert"
+    assert (
+        "wait_for_timeout",
+        marketplace_page.listing_share_click_settle_delay_ms,
+    ) in calls
     assert page.mouse.calls == []
     assert page.evaluate_calls == ["window.scrollTo(0, 0)", "window.scrollY"]
 
@@ -1715,6 +1719,104 @@ def test_marketplace_group_share_page_accepts_visible_image_as_content_signal(
     marketplace_page.assert_group_composer_content_ready("Botitas")
 
     assert ("visible", "locator:img:first", 10000) in calls
+
+
+def test_marketplace_group_share_page_publishes_with_unique_visible_enabled_button(
+    monkeypatch, tmp_path
+) -> None:
+    class FakeButtonLocator:
+        def __init__(self, *, visible: bool, enabled: bool) -> None:
+            self._visible = visible
+            self._enabled = enabled
+
+        def is_visible(self) -> bool:
+            return self._visible
+
+        def is_enabled(self) -> bool:
+            return self._enabled
+
+        def scroll_into_view_if_needed(self) -> None:
+            return None
+
+    class FakeButtonCollection:
+        def __init__(self, buttons) -> None:
+            self._buttons = buttons
+
+        def count(self) -> int:
+            return len(self._buttons)
+
+        def nth(self, index: int):
+            return self._buttons[index]
+
+    class FakeComposerDialog:
+        def __init__(self, buttons) -> None:
+            self._buttons = buttons
+
+        def get_by_role(self, role: str, name: str):
+            assert role == "button"
+            assert name == "Publicar"
+            return FakeButtonCollection(self._buttons)
+
+    visible_enabled_button = FakeButtonLocator(visible=True, enabled=True)
+    marketplace_page = MarketplaceGroupSharePage(
+        page=type("FakePage", (), {})(), screenshot_dir=tmp_path / "screenshots"
+    )
+    monkeypatch.setattr(
+        marketplace_page,
+        "get_visible_group_composer",
+        lambda: FakeComposerDialog(
+            [
+                FakeButtonLocator(visible=False, enabled=True),
+                FakeButtonLocator(visible=True, enabled=False),
+                visible_enabled_button,
+            ]
+        ),
+    )
+    clicked: list[object] = []
+    monkeypatch.setattr(
+        "src.pages.marketplace_group_share_page.click_locator_visible",
+        lambda locator, page: clicked.append(locator),
+    )
+
+    marketplace_page.publish_group_composer()
+
+    assert clicked == [visible_enabled_button]
+
+
+def test_marketplace_group_share_page_publish_fails_without_unique_enabled_button(
+    monkeypatch, tmp_path
+) -> None:
+    class FakeButtonLocator:
+        def is_visible(self) -> bool:
+            return True
+
+        def is_enabled(self) -> bool:
+            return True
+
+    class FakeButtonCollection:
+        def count(self) -> int:
+            return 2
+
+        def nth(self, index: int):
+            return FakeButtonLocator()
+
+    class FakeComposerDialog:
+        def get_by_role(self, role: str, name: str):
+            assert role == "button"
+            assert name == "Publicar"
+            return FakeButtonCollection()
+
+    marketplace_page = MarketplaceGroupSharePage(
+        page=type("FakePage", (), {})(), screenshot_dir=tmp_path / "screenshots"
+    )
+    monkeypatch.setattr(
+        marketplace_page,
+        "get_visible_group_composer",
+        lambda: FakeComposerDialog(),
+    )
+
+    with pytest.raises(ValueError, match="unique visible enabled Marketplace publish button"):
+        marketplace_page.find_publish_button()
 
 
 def test_marketplace_group_share_page_detects_publish_success_confirmed_from_group_toast(

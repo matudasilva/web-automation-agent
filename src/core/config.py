@@ -23,6 +23,7 @@ class Settings(BaseModel):
     allowed_domain: str = Field(default="example.com")
     wait_for_manual_ready: bool = Field(default=False)
     wait_for_manual_publish_confirmation: bool = Field(default=False)
+    auto_publish_to_groups: bool = Field(default=False)
     ui_action_delay_ms: int = Field(default=700)
     ui_iteration_delay_ms: int = Field(default=1500)
     marketplace_listing_discovery_max_scrolls: int = Field(default=3)
@@ -53,6 +54,7 @@ def get_settings() -> Settings:
         wait_for_manual_publish_confirmation=_read_bool(
             "WAIT_FOR_MANUAL_PUBLISH_CONFIRMATION", False
         ),
+        auto_publish_to_groups=_read_bool("AUTO_PUBLISH_TO_GROUPS", False),
         ui_action_delay_ms=_read_int("UI_ACTION_DELAY_MS", 700),
         ui_iteration_delay_ms=_read_int("UI_ITERATION_DELAY_MS", 1500),
         marketplace_listing_discovery_max_scrolls=_read_int(

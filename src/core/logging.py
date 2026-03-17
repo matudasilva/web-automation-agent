@@ -4,6 +4,11 @@ import json
 import logging
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
+
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
+LOG_DIR = ROOT_DIR / "logs"
 
 
 class JsonFormatter(logging.Formatter):
@@ -27,12 +32,23 @@ def configure_logging(level: int = logging.INFO) -> None:
     root_logger = logging.getLogger()
     root_logger.setLevel(level)
 
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(JsonFormatter())
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(JsonFormatter())
+
+    log_file_path = create_run_log_file_path()
+    file_handler = logging.FileHandler(log_file_path, encoding="utf-8")
+    file_handler.setFormatter(JsonFormatter())
 
     root_logger.handlers.clear()
-    root_logger.addHandler(handler)
+    root_logger.addHandler(stream_handler)
+    root_logger.addHandler(file_handler)
 
 
 def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
+
+
+def create_run_log_file_path(now: datetime | None = None) -> Path:
+    timestamp = (now or datetime.now()).strftime("%Y-%m-%d_%H-%M-%S")
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    return LOG_DIR / f"{timestamp}_src_main.log"

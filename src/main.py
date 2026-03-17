@@ -95,6 +95,48 @@ def wait_for_manual_publish_confirmation(
     return post_publish_outcome, screenshot_path
 
 
+def execute_auto_publish(
+    *, page, screenshot_dir: Path, logger
+) -> tuple[PostPublishOutcome, Path]:
+    logger.info("marketplace_group_share_flow_auto_publish_start")
+    marketplace_page = MarketplaceGroupSharePage(
+        page=page, screenshot_dir=screenshot_dir
+    )
+    marketplace_page.publish_group_composer()
+    marketplace_page.wait_for_post_publish_signal()
+    post_publish_outcome = marketplace_page.detect_post_publish_status()
+    logger.info(
+        "marketplace_group_share_flow_auto_publish_result status=%s signal=%s observed_text=%s",
+        post_publish_outcome.status,
+        post_publish_outcome.signal,
+        post_publish_outcome.observed_text,
+    )
+    screenshot_path = capture_page_screenshot(
+        page=page,
+        screenshot_dir=screenshot_dir,
+        name="auto_publish_result",
+    )
+    return post_publish_outcome, screenshot_path
+
+
+def finalize_group_publish(
+    *, page, settings, screenshot_dir: Path, logger
+) -> tuple[PostPublishOutcome, Path] | None:
+    if settings.auto_publish_to_groups:
+        return execute_auto_publish(
+            page=page,
+            screenshot_dir=screenshot_dir,
+            logger=logger,
+        )
+    if settings.wait_for_manual_publish_confirmation:
+        return wait_for_manual_publish_confirmation(
+            page=page,
+            screenshot_dir=screenshot_dir,
+            logger=logger,
+        )
+    return None
+
+
 def run_marketplace_group_share_batch(
     *, page, settings, run_context: RunContext, logger
 ) -> FlowResult:
@@ -151,20 +193,28 @@ def run_group_with_retries(
                 listing_title=settings.marketplace_listing_title,
                 group_name=group_name,
             )
-            if settings.wait_for_manual_publish_confirmation:
-                post_publish_outcome, screenshot_path = (
-                    wait_for_manual_publish_confirmation(
-                        page=page,
-                        screenshot_dir=run_context.artifact_dir,
-                        logger=logger,
-                    )
-                )
+            publish_result = finalize_group_publish(
+                page=page,
+                settings=settings,
+                screenshot_dir=run_context.artifact_dir,
+                logger=logger,
+            )
+            if publish_result is not None:
+                post_publish_outcome, screenshot_path = publish_result
                 flow_result = replace(
                     flow_result,
                     screenshot_path=screenshot_path,
                     post_publish_outcome=post_publish_outcome,
                 )
+            if publish_result is not None:
                 if post_publish_outcome.status == "publish_needs_retry":
+                    logger.info(
+                        "marketplace_group_share_batch_group_attempt_result group_name=%s attempt=%s post_publish_status=%s final_result=%s",
+                        group_name,
+                        attempt,
+                        post_publish_outcome.status,
+                        "publish_needs_retry",
+                    )
                     logger.warning(
                         "marketplace_group_share_batch_group_attempt_publish_retry_needed group_name=%s attempt=%s max_attempts=%s",
                         group_name,
@@ -178,7 +228,28 @@ def run_group_with_retries(
                         group_name,
                         MARKETPLACE_GROUP_MAX_ATTEMPTS,
                     )
+                    logger.info(
+                        "marketplace_group_share_batch_group_final_result group_name=%s attempts=%s post_publish_status=%s final_result=%s",
+                        group_name,
+                        MARKETPLACE_GROUP_MAX_ATTEMPTS,
+                        post_publish_outcome.status,
+                        "skipped_after_publish_retry_exhausted",
+                    )
                     return None
+            logger.info(
+                "marketplace_group_share_batch_group_attempt_result group_name=%s attempt=%s post_publish_status=%s final_result=%s",
+                group_name,
+                attempt,
+                _get_post_publish_status(flow_result),
+                "success",
+            )
+            logger.info(
+                "marketplace_group_share_batch_group_final_result group_name=%s attempts=%s post_publish_status=%s final_result=%s",
+                group_name,
+                attempt,
+                _get_post_publish_status(flow_result),
+                "success",
+            )
             return flow_result
         except Exception:
             logger.exception(
@@ -193,8 +264,21 @@ def run_group_with_retries(
                     group_name,
                     MARKETPLACE_GROUP_MAX_ATTEMPTS,
                 )
+                logger.info(
+                    "marketplace_group_share_batch_group_final_result group_name=%s attempts=%s post_publish_status=%s final_result=%s",
+                    group_name,
+                    MARKETPLACE_GROUP_MAX_ATTEMPTS,
+                    "none",
+                    "skipped_after_attempt_failures",
+                )
                 return None
     return None
+
+
+def _get_post_publish_status(flow_result: FlowResult) -> str:
+    if flow_result.post_publish_outcome is None:
+        return "none"
+    return flow_result.post_publish_outcome.status
 
 
 def resolve_group_targets(settings) -> list[str]:

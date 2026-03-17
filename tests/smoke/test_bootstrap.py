@@ -384,6 +384,14 @@ def test_bootstrap_runs_marketplace_group_share_batch_from_targets_file(
         "marketplace_group_share_batch_iteration_start index=2 total=2 group_name=Grupo Dos"
         in caplog.text
     )
+    assert (
+        "marketplace_group_share_batch_group_final_result group_name=Grupo Uno attempts=1 post_publish_status=none final_result=success"
+        in caplog.text
+    )
+    assert (
+        "marketplace_group_share_batch_group_final_result group_name=Grupo Dos attempts=1 post_publish_status=none final_result=success"
+        in caplog.text
+    )
 
 
 def test_bootstrap_retries_group_after_publish_warning_and_continues(
@@ -502,7 +510,19 @@ def test_bootstrap_retries_group_after_publish_warning_and_continues(
     assert marketplace_calls == ["Grupo Uno", "Grupo Uno", "Grupo Uno", "Grupo Dos"]
     assert screenshot_path == artifact_dir / "group-02" / "manual_publish_result.png"
     assert (
+        "marketplace_group_share_batch_group_attempt_result group_name=Grupo Uno attempt=1 post_publish_status=publish_needs_retry final_result=publish_needs_retry"
+        in caplog.text
+    )
+    assert (
         "marketplace_group_share_batch_group_skipped_after_publish_retry_exhausted group_name=Grupo Uno attempts=3"
+        in caplog.text
+    )
+    assert (
+        "marketplace_group_share_batch_group_final_result group_name=Grupo Uno attempts=3 post_publish_status=publish_needs_retry final_result=skipped_after_publish_retry_exhausted"
+        in caplog.text
+    )
+    assert (
+        "marketplace_group_share_batch_group_final_result group_name=Grupo Dos attempts=1 post_publish_status=publish_success_confirmed final_result=success"
         in caplog.text
     )
 
@@ -594,5 +614,13 @@ def test_bootstrap_retries_group_flow_failure_and_continues(
     assert screenshot_path == artifact_dir / "group-02" / "marketplace_group_share_ready.png"
     assert (
         "marketplace_group_share_batch_group_skipped_after_attempt_failures group_name=Grupo Uno attempts=3"
+        in caplog.text
+    )
+    assert (
+        "marketplace_group_share_batch_group_final_result group_name=Grupo Uno attempts=3 post_publish_status=none final_result=skipped_after_attempt_failures"
+        in caplog.text
+    )
+    assert (
+        "marketplace_group_share_batch_group_final_result group_name=Grupo Dos attempts=1 post_publish_status=none final_result=success"
         in caplog.text
     )
