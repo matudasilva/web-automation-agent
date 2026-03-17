@@ -31,7 +31,7 @@ Implemented so far:
 
 The browser automation foundation is complete, and the first deterministic flow is in place. Broader business workflows are not implemented yet.
 
-The current private site-specific step is limited to navigating an authenticated marketplace management area, opening the group-share flow, selecting the destination group, and stopping at a non-destructive composer checkpoint before the final publish action.
+The current private site-specific step is limited to navigating an authenticated marketplace management area, opening the group-share flow, selecting the destination group, and either stopping at a non-destructive composer checkpoint or optionally executing the final publish action behind an explicit flag.
 
 ## Development Approach
 
@@ -110,11 +110,12 @@ This will:
 - optionally pause after opening `BASE_URL` so you can complete login manually and press Enter in the terminal
 - run the landing precheck flow
 - run the marketplace group-share flow with the configured listing title and group name
+- optionally keep the final publish action manual or execute it automatically when explicitly enabled
 - create a per-run artifact directory under the configured screenshot base path
 - emit a concise execution summary for the run
 - capture a success checkpoint screenshot
 - capture failure evidence if the landing flow raises after navigation starts
-- stop before the final publish action
+- keep the final publish action manual by default
 
 ## Local Real-Web Run
 
@@ -128,6 +129,8 @@ HEADLESS=false
 BROWSER_PROFILE_DIR=./runtime/profiles/firefox-marketplace
 SCREENSHOT_DIR=./screenshots
 WAIT_FOR_MANUAL_READY=true
+WAIT_FOR_MANUAL_PUBLISH_CONFIRMATION=true
+AUTO_PUBLISH_TO_GROUPS=false
 MARKETPLACE_LISTING_TITLE=Botitas de gamuza tipo desert
 MARKETPLACE_GROUP_NAME=Las Piedras, la paz Progreso, Colon
 ```
@@ -137,6 +140,8 @@ Relevant variables:
 - `BROWSER=chromium|firefox|webkit`
 - `BROWSER_PROFILE_DIR` enables Playwright persistent context when set
 - `WAIT_FOR_MANUAL_READY=true` opens `BASE_URL` and waits for Enter before continuing
+- `WAIT_FOR_MANUAL_PUBLISH_CONFIRMATION=true` keeps the final publish action manual
+- `AUTO_PUBLISH_TO_GROUPS=true` enables automatic clicking of the final `Publicar` button in the group composer
 - `MARKETPLACE_LISTING_TITLE` is matched partially to tolerate punctuation or truncated UI text
 - `MARKETPLACE_GROUP_NAME` selects the destination group in the share flow
 
@@ -145,6 +150,11 @@ Relevant variables:
 ```bash
 pytest
 ```
+
+## Useful Commands
+
+Marketplace run and log inspection commands are documented in
+[`docs/marketplace_run_commands.md`](/home/matias/Cursor/web-automation-agent/docs/marketplace_run_commands.md).
 
 ## Roadmap
 
