@@ -265,7 +265,7 @@ def test_marketplace_group_share_page_normalizes_listing_title_for_comparison(
                 )()
             return FakeButtonLocatorGroup(
                 [
-                    FakeButton("Compartir Colchon 1 Plaza - Muy Firme - 28 cm de Alto"),
+                    FakeButton("Compartir Colchon 1 Plaza – Muy Firme – 28 cm de Alto"),
                     FakeButton("Compartir Otro producto"),
                 ]
             )
@@ -287,7 +287,7 @@ def test_marketplace_group_share_page_normalizes_listing_title_for_comparison(
     )
 
     assert share_button.get_attribute("aria-label") == (
-        "Compartir Colchon 1 Plaza - Muy Firme - 28 cm de Alto"
+        "Compartir Colchon 1 Plaza – Muy Firme – 28 cm de Alto"
     )
 
 
@@ -1304,35 +1304,255 @@ def test_marketplace_group_share_page_selects_group_within_group_picker(
 ) -> None:
     calls: list[object] = []
 
+    class FakeSearchInput:
+        def is_visible(self) -> bool:
+            return True
+
+        def fill(self, value: str) -> None:
+            calls.append(("fill", value))
+
+    class FakeGroupOption:
+        def __init__(self, label: str) -> None:
+            self.label = label
+
+        def is_visible(self) -> bool:
+            return True
+
+        def get_attribute(self, name: str) -> str | None:
+            if name != "aria-label":
+                return None
+            return self.label
+
+        def text_content(self) -> str:
+            return self.label
+
+    class FakeLocatorGroup:
+        def __init__(self, items: list[object]) -> None:
+            self._items = items
+            self.first = items[0]
+
+        def count(self) -> int:
+            return len(self._items)
+
+        def nth(self, index: int):
+            return self._items[index]
+
     class FakeGroupPickerDialog:
-        def get_by_text(self, text: str, exact: bool):
-            calls.append((text, exact))
-            return group_option
+        def __init__(self) -> None:
+            self.search_input = FakeSearchInput()
+            self.options = [
+                FakeGroupOption("Ventas en las piedras la paz progreso"),
+                FakeGroupOption("Venta De Todo La Paz Las Piedras"),
+            ]
+
+        def get_by_role(self, role: str, name):
+            calls.append(("get_by_role", role))
+            if role == "searchbox":
+                return FakeLocatorGroup([self.search_input])
+            if role == "textbox":
+                return FakeLocatorGroup([type("HiddenTextbox", (), {"is_visible": lambda self: False})()])
+            if role == "button":
+                return FakeLocatorGroup(self.options)
+            raise AssertionError(f"Unexpected role: {role}")
 
     class FakePage:
-        pass
+        def wait_for_timeout(self, timeout_ms: int) -> None:
+            calls.append(("wait_for_timeout", timeout_ms))
 
-    group_option = object()
+    group_option = FakeGroupOption("Venta De Todo La Paz Las Piedras")
     marketplace_page = MarketplaceGroupSharePage(
         page=FakePage(), screenshot_dir=tmp_path / "screenshots"
     )
+    group_picker_dialog = FakeGroupPickerDialog()
 
     monkeypatch.setattr(
         marketplace_page,
         "find_group_picker_dialog",
-        lambda: calls.append("group_picker_dialog") or FakeGroupPickerDialog(),
+        lambda: calls.append("group_picker_dialog") or group_picker_dialog,
     )
     monkeypatch.setattr(
         "src.pages.marketplace_group_share_page.click_locator_visible",
         lambda locator, page=None: calls.append(locator),
     )
 
-    marketplace_page.select_group("Las Piedras, la paz Progreso, Colon")
+    marketplace_page.select_group("Venta De Todo La Paz Las Piedras")
+
+    assert calls[0] == "group_picker_dialog"
+    assert ("fill", "") in calls
+    assert ("fill", "Venta De Todo La Paz Las Piedras") in calls
+    assert ("wait_for_timeout", marketplace_page.group_picker_search_settle_delay_ms) in calls
+    assert calls[-1].label == "Venta De Todo La Paz Las Piedras"
+
+
+def test_marketplace_group_share_page_matches_group_option_with_normalized_text(
+    tmp_path,
+) -> None:
+    class FakeGroupOption:
+        def __init__(self, label: str) -> None:
+            self.label = label
+
+        def is_visible(self) -> bool:
+            return True
+
+        def get_attribute(self, name: str) -> str | None:
+            if name != "aria-label":
+                return None
+            return self.label
+
+        def text_content(self) -> str:
+            return self.label
+
+    class FakeLocatorGroup:
+        def __init__(self, items: list[object]) -> None:
+            self._items = items
+            self.first = items[0]
+
+        def count(self) -> int:
+            return len(self._items)
+
+        def nth(self, index: int):
+            return self._items[index]
+
+    class FakeGroupPickerDialog:
+        def get_by_role(self, role: str, name):
+            if role == "button":
+                return FakeLocatorGroup(
+                    [
+                        FakeGroupOption("compra y venta, Colón, la paz, las piedras.."),
+                        FakeGroupOption("Ventas en las piedras la paz progreso"),
+                    ]
+                )
+            raise AssertionError(f"Unexpected role: {role}")
+
+    marketplace_page = MarketplaceGroupSharePage(
+        page=type("FakePage", (), {})(), screenshot_dir=tmp_path / "screenshots"
+    )
+
+    group_option = marketplace_page.find_group_picker_group_option(
+        FakeGroupPickerDialog(),
+        "Compra y venta, Colon, la paz, las piedras",
+    )
+
+    assert group_option.label == "compra y venta, Colón, la paz, las piedras.."
+
+
+def test_marketplace_group_share_page_retries_group_picker_when_only_modal_controls_are_visible(
+    tmp_path,
+) -> None:
+    class FakeGroupOption:
+        def __init__(self, label: str) -> None:
+            self.label = label
+
+        def is_visible(self) -> bool:
+            return True
+
+        def get_attribute(self, name: str) -> str | None:
+            if name != "aria-label":
+                return None
+            return self.label
+
+        def text_content(self) -> str:
+            return self.label
+
+    class FakeLocatorGroup:
+        def __init__(self, page, items_by_phase: list[list[object]]) -> None:
+            self.page = page
+            self.items_by_phase = items_by_phase
+            self.first = items_by_phase[0][0]
+
+        def count(self) -> int:
+            return len(self.items_by_phase[self.page.phase])
+
+        def nth(self, index: int):
+            return self.items_by_phase[self.page.phase][index]
+
+    class FakePage:
+        def __init__(self) -> None:
+            self.phase = 0
+            self.timeout_calls: list[int] = []
+
+        def wait_for_timeout(self, timeout_ms: int) -> None:
+            self.timeout_calls.append(timeout_ms)
+            if timeout_ms == marketplace_page.group_picker_search_retry_delay_ms:
+                self.phase = 1
+
+    class FakeGroupPickerDialog:
+        def __init__(self, page) -> None:
+            self.page = page
+            self.options = FakeLocatorGroup(
+                page,
+                [
+                    [FakeGroupOption("Volver"), FakeGroupOption("Cerrar")],
+                    [FakeGroupOption("venta la paz, las piedras, abayuba,colon, paso molino , el dorado , etc.")],
+                ],
+            )
+
+        def get_by_role(self, role: str, name):
+            if role == "button":
+                return self.options
+            raise AssertionError(f"Unexpected role: {role}")
+
+    page = FakePage()
+    marketplace_page = MarketplaceGroupSharePage(
+        page=page, screenshot_dir=tmp_path / "screenshots"
+    )
+    group_picker_dialog = FakeGroupPickerDialog(page)
+
+    group_option = marketplace_page.find_group_picker_group_option_with_retry(
+        group_picker_dialog,
+        "venta la paz, las piedras, abayuba,colon, paso molino , el dorado , etc.",
+    )
+
+    assert group_option.label == (
+        "venta la paz, las piedras, abayuba,colon, paso molino , el dorado , etc."
+    )
+    assert page.timeout_calls == [marketplace_page.group_picker_search_retry_delay_ms]
+
+
+def test_marketplace_group_share_page_preserves_parentheses_in_group_search_term(
+    monkeypatch, tmp_path
+) -> None:
+    calls: list[tuple[str, str] | tuple[str, int]] = []
+
+    class FakeSearchInput:
+        def is_visible(self) -> bool:
+            return True
+
+        def fill(self, value: str) -> None:
+            calls.append(("fill", value))
+
+    class FakeLocatorGroup:
+        def __init__(self, items: list[object]) -> None:
+            self._items = items
+            self.first = items[0]
+
+    class FakeGroupPickerDialog:
+        def get_by_role(self, role: str, name):
+            if role == "searchbox":
+                return FakeLocatorGroup([FakeSearchInput()])
+            if role == "textbox":
+                return FakeLocatorGroup(
+                    [type("HiddenTextbox", (), {"is_visible": lambda self: False})()]
+                )
+            raise AssertionError(f"Unexpected role: {role}")
+
+    class FakePage:
+        def wait_for_timeout(self, timeout_ms: int) -> None:
+            calls.append(("wait_for_timeout", timeout_ms))
+
+    marketplace_page = MarketplaceGroupSharePage(
+        page=FakePage(), screenshot_dir=tmp_path / "screenshots"
+    )
+
+    marketplace_page.apply_group_picker_search_filter(
+        FakeGroupPickerDialog(),
+        "Compra y venta (Exclusivo La Paz, Canelones)",
+    )
 
     assert calls == [
-        "group_picker_dialog",
-        ("Las Piedras, la paz Progreso, Colon", True),
-        group_option,
+        ("fill", ""),
+        ("fill", "Compra y venta (Exclusivo La Paz, Canelones)"),
+        ("wait_for_timeout", marketplace_page.group_picker_search_settle_delay_ms),
     ]
 
 

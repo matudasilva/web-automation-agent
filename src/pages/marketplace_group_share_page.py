@@ -36,6 +36,8 @@ class MarketplaceGroupSharePage(BasePage):
     group_destination_transition_timeout_ms = 1500
     listing_search_settle_delay_ms = 700
     listing_search_retry_delay_ms = 250
+    group_picker_search_settle_delay_ms = 500
+    group_picker_search_retry_delay_ms = 300
     listing_discovery_max_scrolls = 3
     listing_discovery_scroll_y_px = 1200
     listing_discovery_scroll_delay_ms = 400
@@ -288,8 +290,6 @@ class MarketplaceGroupSharePage(BasePage):
 
     def normalize_text_for_comparison(self, value: str) -> str:
         normalized = value.strip().lower()
-        normalized = re.sub(r"[\u2010\u2011\u2012\u2013\u2014\u2015]+", "-", normalized)
-        normalized = re.sub(r"\s*-\s*", " - ", normalized)
         normalized = " ".join(normalized.split())
         normalized = unicodedata.normalize("NFKD", normalized)
         return "".join(
@@ -445,8 +445,96 @@ class MarketplaceGroupSharePage(BasePage):
 
     def select_group(self, group_name: str) -> None:
         group_picker_dialog = self.find_group_picker_dialog()
-        group_option = group_picker_dialog.get_by_text(group_name, exact=True)
+        self.apply_group_picker_search_filter(group_picker_dialog, group_name)
+        group_option = self.find_group_picker_group_option_with_retry(
+            group_picker_dialog, group_name
+        )
         click_locator_visible(group_option, page=self.page)
+
+    def apply_group_picker_search_filter(
+        self, group_picker_dialog: Locator, group_name: str
+    ) -> None:
+        search_input = self.find_group_picker_search_input(group_picker_dialog)
+        if search_input is None:
+            return
+        search_term = group_name.strip()
+        search_input.fill("")
+        search_input.fill(search_term)
+        self.page.wait_for_timeout(self.group_picker_search_settle_delay_ms)
+
+    def find_group_picker_search_input(self, group_picker_dialog: Locator) -> Locator | None:
+        candidates = [
+            group_picker_dialog.get_by_role("searchbox", name=re.compile(".*")).first,
+            group_picker_dialog.get_by_role("textbox", name=re.compile(".*")).first,
+        ]
+        for candidate in candidates:
+            if self._is_locator_visible(candidate):
+                return candidate
+        return None
+
+    def find_group_picker_group_option_with_retry(
+        self, group_picker_dialog: Locator, group_name: str
+    ) -> Locator:
+        try:
+            return self.find_group_picker_group_option(group_picker_dialog, group_name)
+        except ValueError as first_error:
+            if not self._group_picker_has_only_chrome_controls(first_error):
+                raise
+            self.page.wait_for_timeout(self.group_picker_search_retry_delay_ms)
+            return self.find_group_picker_group_option(group_picker_dialog, group_name)
+
+    def find_group_picker_group_option(
+        self, group_picker_dialog: Locator, group_name: str
+    ) -> Locator:
+        group_options = group_picker_dialog.get_by_role("button", name=re.compile(".*"))
+        normalized_group_name = self.normalize_text_for_comparison(group_name)
+        matching_options: list[Locator] = []
+        candidate_names: list[str] = []
+
+        for index in range(group_options.count()):
+            candidate_option = group_options.nth(index)
+            if not candidate_option.is_visible():
+                continue
+
+            candidate_name = candidate_option.get_attribute("aria-label")
+            if candidate_name is None:
+                candidate_name = candidate_option.text_content()
+            normalized_candidate_name = (candidate_name or "").strip()
+            if not normalized_candidate_name:
+                continue
+            if self._is_group_picker_chrome_control(normalized_candidate_name):
+                continue
+
+            candidate_names.append(normalized_candidate_name)
+            if normalized_group_name in self.normalize_text_for_comparison(
+                normalized_candidate_name
+            ):
+                matching_options.append(candidate_option)
+
+        if len(matching_options) == 1:
+            return matching_options[0]
+        if len(matching_options) > 1:
+            raise ValueError(
+                "Expected a unique visible Marketplace group option matching group name "
+                f"'{group_name}', but found {len(matching_options)} matches. "
+                f"Visible group option candidates: {candidate_names}"
+            )
+        raise ValueError(
+            "Could not resolve a visible Marketplace group option matching group name "
+            f"'{group_name}'. Visible group option candidates: {candidate_names}"
+        )
+
+    def _is_group_picker_chrome_control(self, candidate_name: str) -> bool:
+        normalized_candidate_name = self.normalize_text_for_comparison(candidate_name)
+        return normalized_candidate_name in {"volver", "cerrar"}
+
+    def _group_picker_has_only_chrome_controls(self, error: ValueError) -> bool:
+        error_text = str(error)
+        return (
+            "Visible group option candidates: []" in error_text
+            or "Visible group option candidates: ['Volver', 'Cerrar']" in error_text
+        )
+
 
     def get_visible_group_composer(self) -> Locator:
         composer_heading = self.page.get_by_role(
