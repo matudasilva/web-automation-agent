@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 
 from src.core.config import Settings
+from src.core.post_publish_status import PostPublishOutcome
 from src.flows.flow_result import FlowResult
 from src.flows.run_context import RunContext
 from src.main import run_bootstrap
@@ -99,12 +100,14 @@ def test_bootstrap_runs_landing_flow(tmp_path, monkeypatch, caplog) -> None:
     assert (
         "flow_execution_summary flow_name=landing_flow success=True "
         "step=capture_checkpoint current_url=https://example.com run_id=run-123 "
-        f"artifact_dir={artifact_dir} screenshot_path={artifact_dir / 'landing_ready.png'}"
+        f"artifact_dir={artifact_dir} screenshot_path={artifact_dir / 'landing_ready.png'} "
+        "post_publish_status=None"
     ) in caplog.text
     assert (
         "flow_execution_summary flow_name=marketplace_group_share_flow success=True "
         "step=capture_checkpoint current_url=https://example.com/marketplace/you/selling "
-        f"run_id=run-123 artifact_dir={artifact_dir / 'group-01'} screenshot_path={expected_path}"
+        f"run_id=run-123 artifact_dir={artifact_dir / 'group-01'} screenshot_path={expected_path} "
+        "post_publish_status=None"
     ) in caplog.text
 
 
@@ -251,6 +254,14 @@ def test_bootstrap_waits_for_manual_publish_confirmation_when_enabled(
     screenshots: list[tuple[object, Path, str]] = []
     monkeypatch.setattr("builtins.input", lambda prompt: prompts.append(prompt) or "")
     monkeypatch.setattr(
+        "src.pages.marketplace_group_share_page.MarketplaceGroupSharePage.detect_post_publish_status",
+        lambda self: PostPublishOutcome(
+            status="published_visible",
+            observed_text="toast=Tu publicación se publicó.",
+            signal="toast",
+        ),
+    )
+    monkeypatch.setattr(
         "src.main.capture_page_screenshot",
         lambda page, screenshot_dir, name: screenshots.append(
             (page, screenshot_dir, name)
@@ -264,8 +275,13 @@ def test_bootstrap_waits_for_manual_publish_confirmation_when_enabled(
     assert prompts == [
         "Composer listo. Haz clic manualmente en Publicar, verifica que la publicación se haya enviado correctamente y luego presiona Enter para finalizar."
     ]
-    assert screenshots == [(page, artifact_dir / "group-01", "manual_publish_confirmed")]
+    assert screenshots == [(page, artifact_dir / "group-01", "manual_publish_result")]
     assert "marketplace_group_share_flow_manual_publish_handoff" in caplog.text
+    assert (
+        "marketplace_group_share_flow_manual_publish_result "
+        "status=published_visible signal=toast observed_text=toast=Tu publicación se publicó."
+    ) in caplog.text
+    assert "post_publish_status=published_visible" in caplog.text
 
 
 def test_bootstrap_runs_marketplace_group_share_batch_from_targets_file(

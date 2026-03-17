@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from src.core.post_publish_status import PostPublishOutcome
 from src.pages.marketplace_group_share_page import MarketplaceGroupSharePage
 
 
@@ -219,6 +220,74 @@ def test_marketplace_group_share_page_finds_unique_matching_share_button_with_mu
 
     assert share_button.get_attribute("aria-label") == (
         "Compartir Botitas de gamuza tipo desert"
+    )
+
+
+def test_marketplace_group_share_page_normalizes_listing_title_for_comparison(
+    tmp_path,
+) -> None:
+    class FakeButton:
+        def __init__(self, aria_label: str) -> None:
+            self.aria_label = aria_label
+
+        def is_visible(self) -> bool:
+            return True
+
+        def get_attribute(self, name: str) -> str | None:
+            if name != "aria-label":
+                return None
+            return self.aria_label
+
+        def text_content(self) -> str:
+            return self.aria_label
+
+        def wait_for(self, state: str, timeout: int) -> None:
+            return None
+
+    class FakeButtonLocatorGroup:
+        def __init__(self, buttons: list[FakeButton]) -> None:
+            self._buttons = buttons
+            self.first = buttons[0]
+
+        def count(self) -> int:
+            return len(self._buttons)
+
+        def nth(self, index: int) -> FakeButton:
+            return self._buttons[index]
+
+    class FakePage:
+        def get_by_role(self, role: str, name):
+            if role in {"searchbox", "textbox"}:
+                return type(
+                    "HiddenSearchInput",
+                    (),
+                    {"first": type("HiddenSearchLocator", (), {"is_visible": lambda self: False})()},
+                )()
+            return FakeButtonLocatorGroup(
+                [
+                    FakeButton("Compartir Colchon 1 Plaza - Muy Firme - 28 cm de Alto"),
+                    FakeButton("Compartir Otro producto"),
+                ]
+            )
+
+        def evaluate(self, script: str):
+            if script == "window.scrollY":
+                return 0
+            return None
+
+        def wait_for_timeout(self, timeout_ms: int) -> None:
+            return None
+
+    marketplace_page = MarketplaceGroupSharePage(
+        page=FakePage(), screenshot_dir=tmp_path / "screenshots"
+    )
+
+    share_button = marketplace_page.find_listing_share_button(
+        "  Colchón 1 Plaza – Muy   Firme – 28 cm de Alto  "
+    )
+
+    assert share_button.get_attribute("aria-label") == (
+        "Compartir Colchon 1 Plaza - Muy Firme - 28 cm de Alto"
     )
 
 
@@ -449,7 +518,14 @@ def test_marketplace_group_share_page_fails_after_exhausting_scroll_discovery(
 
     with pytest.raises(
         ValueError,
-        match="found 0 matches after 4 discovery passes",
+        match=(
+            r"requested_title='Botitas'.*"
+            r"normalized_requested_title='botitas'.*"
+            r"search_term_used='botitas'.*"
+            r"discovery_passes=4.*"
+            r"stop_reason=max_scrolls_exhausted.*"
+            r"final_visible_candidate_titles=\['Compartir Último candidato visible'\]"
+        ),
     ):
         marketplace_page.find_listing_share_button("Botitas")
 
@@ -527,10 +603,96 @@ def test_marketplace_group_share_page_stops_discovery_when_scroll_stalls(
         page=page, screenshot_dir=tmp_path / "screenshots"
     )
 
-    with pytest.raises(ValueError, match="found 0 matches after 4 discovery passes"):
+    with pytest.raises(ValueError, match="stop_reason=scroll_stalled"):
         marketplace_page.find_listing_share_button("Botitas")
 
-    assert page.mouse.calls == [(0, marketplace_page.listing_discovery_scroll_y_px)]
+
+def test_marketplace_group_share_page_stops_discovery_when_no_new_candidates(
+    tmp_path,
+) -> None:
+    class FakeButton:
+        def __init__(self, aria_label: str) -> None:
+            self.aria_label = aria_label
+
+        def is_visible(self) -> bool:
+            return True
+
+        def get_attribute(self, name: str) -> str | None:
+            if name != "aria-label":
+                return None
+            return self.aria_label
+
+        def text_content(self) -> str:
+            return self.aria_label
+
+        def wait_for(self, state: str, timeout: int) -> None:
+            return None
+
+    class FakeMouse:
+        def __init__(self, page) -> None:
+            self.page = page
+            self.calls: list[tuple[int, int]] = []
+
+        def wheel(self, delta_x: int, delta_y: int) -> None:
+            self.calls.append((delta_x, delta_y))
+            self.page.scroll_index += 1
+
+    class FakeButtonLocatorGroup:
+        def __init__(self, page) -> None:
+            self.page = page
+            self.first = page.button_sets[0][0]
+
+        def count(self) -> int:
+            return len(self.page.button_sets[self.page.scroll_index])
+
+        def nth(self, index: int) -> FakeButton:
+            return self.page.button_sets[self.page.scroll_index][index]
+
+    class FakePage:
+        def __init__(self) -> None:
+            self.scroll_index = 0
+            self.button_sets = [
+                [FakeButton("Compartir Otro producto")],
+                [FakeButton("Compartir Mismo candidato visible")],
+                [FakeButton("Compartir Mismo candidato visible")],
+            ]
+            self.mouse = FakeMouse(self)
+
+        def get_by_role(self, role: str, name):
+            if role in {"searchbox", "textbox"}:
+                return type(
+                    "HiddenSearchInput",
+                    (),
+                    {"first": type("HiddenSearchLocator", (), {"is_visible": lambda self: False})()},
+                )()
+            return FakeButtonLocatorGroup(self)
+
+        def evaluate(self, script: str):
+            if script == "window.scrollY":
+                return self.scroll_index * 1000
+            return None
+
+        def wait_for_timeout(self, timeout_ms: int) -> None:
+            return None
+
+    page = FakePage()
+    marketplace_page = MarketplaceGroupSharePage(
+        page=page, screenshot_dir=tmp_path / "screenshots"
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"stop_reason=no_new_candidates.*"
+            r"final_visible_candidate_titles=\['Compartir Mismo candidato visible'\]"
+        ),
+    ):
+        marketplace_page.find_listing_share_button("Botitas")
+
+    assert page.mouse.calls == [
+        (0, marketplace_page.listing_discovery_scroll_y_px),
+        (0, marketplace_page.listing_discovery_scroll_y_px),
+    ]
 
 
 def test_marketplace_group_share_page_uses_search_as_primary_listing_strategy(
@@ -563,7 +725,7 @@ def test_marketplace_group_share_page_uses_search_as_primary_listing_strategy(
 
         def fill(self, value: str) -> None:
             self.page.search_terms.append(value)
-            self.page.filtered = value == "Botitas"
+            self.page.filtered = value == "botitas"
 
     class FakeButtonLocatorGroup:
         def __init__(self, page) -> None:
@@ -623,7 +785,7 @@ def test_marketplace_group_share_page_uses_search_as_primary_listing_strategy(
     assert share_button.get_attribute("aria-label") == (
         "Compartir Botitas de gamuza tipo desert"
     )
-    assert page.search_terms == ["", "Botitas"]
+    assert page.search_terms == ["", "botitas"]
     assert page.mouse.calls == []
 
 
@@ -657,7 +819,7 @@ def test_marketplace_group_share_page_falls_back_to_scroll_when_search_has_no_re
 
         def fill(self, value: str) -> None:
             self.page.search_terms.append(value)
-            self.page.filtered = value == "Botitas"
+            self.page.filtered = value == "botitas"
 
     class FakeMouse:
         def __init__(self, page) -> None:
@@ -727,8 +889,106 @@ def test_marketplace_group_share_page_falls_back_to_scroll_when_search_has_no_re
     assert share_button.get_attribute("aria-label") == (
         "Compartir Botitas de gamuza tipo desert"
     )
-    assert page.search_terms == ["", "Botitas", ""]
+    assert page.search_terms == ["", "botitas", ""]
     assert page.mouse.calls == [(0, marketplace_page.listing_discovery_scroll_y_px)]
+
+
+def test_marketplace_group_share_page_retries_search_snapshot_before_falling_back(
+    tmp_path,
+) -> None:
+    class FakeButton:
+        def __init__(self, aria_label: str) -> None:
+            self.aria_label = aria_label
+
+        def is_visible(self) -> bool:
+            return True
+
+        def get_attribute(self, name: str) -> str | None:
+            if name != "aria-label":
+                return None
+            return self.aria_label
+
+        def text_content(self) -> str:
+            return self.aria_label
+
+        def wait_for(self, state: str, timeout: int) -> None:
+            return None
+
+    class FakeSearchLocator:
+        def __init__(self, page) -> None:
+            self.page = page
+
+        def is_visible(self) -> bool:
+            return True
+
+        def fill(self, value: str) -> None:
+            self.page.search_terms.append(value)
+            self.page.filtered = value == "botitas"
+
+    class FakeButtonLocatorGroup:
+        def __init__(self, page) -> None:
+            self.page = page
+            self.first = FakeButton("Compartir Placeholder")
+
+        def count(self) -> int:
+            return len(self._current_buttons())
+
+        def nth(self, index: int) -> FakeButton:
+            return self._current_buttons()[index]
+
+        def _current_buttons(self) -> list[FakeButton]:
+            if self.page.filtered:
+                if not self.page.search_retry_ready:
+                    return [FakeButton("Compartir Otro producto")]
+                return [FakeButton("Compartir Botitas de gamuza tipo desert")]
+            return [FakeButton("Compartir Otro producto")]
+
+    class FakePage:
+        def __init__(self) -> None:
+            self.search_terms: list[str] = []
+            self.filtered = False
+            self.search_retry_ready = False
+            self.mouse = type(
+                "FakeMouse",
+                (),
+                {"calls": [], "wheel": lambda self, delta_x, delta_y: self.calls.append((delta_x, delta_y))},
+            )()
+            self.timeout_calls: list[int] = []
+
+        def get_by_role(self, role: str, name):
+            if role == "searchbox":
+                return type("SearchboxGroup", (), {"first": FakeSearchLocator(self)})()
+            if role == "textbox":
+                return type(
+                    "HiddenTextboxGroup",
+                    (),
+                    {"first": type("HiddenTextbox", (), {"is_visible": lambda self: False})()},
+                )()
+            return FakeButtonLocatorGroup(self)
+
+        def evaluate(self, script: str):
+            if script == "window.scrollY":
+                return 0
+            return None
+
+        def wait_for_timeout(self, timeout_ms: int) -> None:
+            self.timeout_calls.append(timeout_ms)
+            if timeout_ms == marketplace_page.listing_search_retry_delay_ms:
+                self.search_retry_ready = True
+
+    page = FakePage()
+    marketplace_page = MarketplaceGroupSharePage(
+        page=page, screenshot_dir=tmp_path / "screenshots"
+    )
+
+    share_button = marketplace_page.find_listing_share_button("Botitas")
+
+    assert share_button.get_attribute("aria-label") == (
+        "Compartir Botitas de gamuza tipo desert"
+    )
+    assert page.search_terms == ["", "botitas"]
+    assert marketplace_page.listing_search_retry_delay_ms in page.timeout_calls
+    assert page.mouse.calls == []
 
 
 def test_marketplace_group_share_page_fails_when_search_returns_multiple_matches(
@@ -808,20 +1068,63 @@ def test_marketplace_group_share_page_fails_when_search_returns_multiple_matches
         marketplace_page.find_listing_share_button("Botitas")
 
 
+def test_marketplace_group_share_page_builds_short_normalized_search_term(
+    tmp_path,
+) -> None:
+    marketplace_page = MarketplaceGroupSharePage(
+        page=type("FakePage", (), {})(), screenshot_dir=tmp_path / "screenshots"
+    )
+
+    assert (
+        marketplace_page.build_listing_search_term(
+            "Colchón 1 Plaza – Muy Firme – 28 cm de Alto"
+        )
+        == "colchon 1 plaza"
+    )
+
+
 def test_marketplace_group_share_page_opens_group_destination(
     monkeypatch, tmp_path
 ) -> None:
     calls: list[object] = []
 
+    class FakeLocatorGroup:
+        def __init__(self, locator) -> None:
+            self.first = locator
+
+    class FakeGroupOption:
+        def __init__(self) -> None:
+            self.scroll_calls = 0
+
+        def is_visible(self) -> bool:
+            return True
+
+        def scroll_into_view_if_needed(self) -> None:
+            self.scroll_calls += 1
+
     class FakeShareDialog:
+        def get_by_role(self, role: str, name: str):
+            calls.append(("get_by_role", role, name))
+            if role == "button":
+                return FakeLocatorGroup(group_option)
+            return FakeLocatorGroup(hidden_option)
+
         def get_by_text(self, text: str, exact: bool):
-            calls.append((text, exact))
-            return group_option
+            calls.append(("get_by_text", text, exact))
+            return FakeLocatorGroup(hidden_option)
 
     class FakePage:
         pass
 
-    group_option = object()
+    class HiddenOption:
+        def is_visible(self) -> bool:
+            return False
+
+        def scroll_into_view_if_needed(self) -> None:
+            raise AssertionError("hidden option should not scroll")
+
+    group_option = FakeGroupOption()
+    hidden_option = HiddenOption()
     marketplace_page = MarketplaceGroupSharePage(
         page=FakePage(), screenshot_dir=tmp_path / "screenshots"
     )
@@ -832,13 +1135,168 @@ def test_marketplace_group_share_page_opens_group_destination(
         lambda: calls.append("share_dialog") or FakeShareDialog(),
     )
     monkeypatch.setattr(
+        marketplace_page,
+        "capture_checkpoint",
+        lambda name: calls.append(("checkpoint", name)),
+    )
+    monkeypatch.setattr(
         "src.pages.marketplace_group_share_page.click_locator_visible",
         lambda locator, page=None: calls.append(locator),
+    )
+    monkeypatch.setattr(
+        marketplace_page,
+        "assert_group_picker_visible",
+        lambda timeout_ms=5000: calls.append(("assert_group_picker_visible", timeout_ms)),
+    )
+    monkeypatch.setattr(
+        "src.pages.marketplace_group_share_page.assert_locator_visible",
+        lambda locator, timeout_ms=5000: calls.append(("assert_locator_visible", locator, timeout_ms)),
     )
 
     marketplace_page.open_group_destination()
 
-    assert calls == ["share_dialog", ("Grupo", True), group_option]
+    assert calls == [
+        "share_dialog",
+        ("checkpoint", "marketplace_open_group_destination_before_click"),
+        ("get_by_role", "button", "Grupo"),
+        ("assert_locator_visible", group_option, 5000),
+        group_option,
+        ("assert_group_picker_visible", 1500),
+    ]
+    assert group_option.scroll_calls == 1
+
+
+def test_marketplace_group_share_page_captures_evidence_when_group_picker_does_not_open(
+    monkeypatch, tmp_path
+) -> None:
+    calls: list[object] = []
+
+    class FakeGroupOption:
+        def is_visible(self) -> bool:
+            return True
+
+        def scroll_into_view_if_needed(self) -> None:
+            calls.append("scroll_into_view_if_needed")
+
+    marketplace_page = MarketplaceGroupSharePage(
+        page=type("FakePage", (), {})(), screenshot_dir=tmp_path / "screenshots"
+    )
+    group_option = FakeGroupOption()
+    share_dialog = object()
+
+    monkeypatch.setattr(
+        marketplace_page,
+        "find_share_dialog",
+        lambda: calls.append("share_dialog") or share_dialog,
+    )
+    monkeypatch.setattr(
+        marketplace_page,
+        "find_group_destination_option",
+        lambda share_dialog: calls.append(("find_group_destination_option", share_dialog))
+        or group_option,
+    )
+    monkeypatch.setattr(
+        marketplace_page,
+        "capture_checkpoint",
+        lambda name: calls.append(("checkpoint", name)),
+    )
+    monkeypatch.setattr(
+        "src.pages.marketplace_group_share_page.assert_locator_visible",
+        lambda locator, timeout_ms=5000: calls.append(("assert_locator_visible", locator, timeout_ms)),
+    )
+    monkeypatch.setattr(
+        "src.pages.marketplace_group_share_page.click_locator_visible",
+        lambda locator, page=None: calls.append(("click_locator_visible", locator, page)),
+    )
+
+    def fail_assert_group_picker_visible(timeout_ms=5000):
+        calls.append(("assert_group_picker_visible", timeout_ms))
+        raise RuntimeError("group picker did not open")
+
+    monkeypatch.setattr(
+        marketplace_page,
+        "assert_group_picker_visible",
+        fail_assert_group_picker_visible,
+    )
+
+    marketplace_page.open_group_destination()
+
+    assert calls == [
+        "share_dialog",
+        ("checkpoint", "marketplace_open_group_destination_before_click"),
+        ("find_group_destination_option", share_dialog),
+        ("assert_locator_visible", group_option, 5000),
+        "scroll_into_view_if_needed",
+        (
+            "click_locator_visible",
+            group_option,
+            marketplace_page.page,
+        ),
+        ("assert_group_picker_visible", 1500),
+        ("checkpoint", "marketplace_open_group_destination_after_click_failed"),
+    ]
+
+
+def test_marketplace_group_share_page_opens_group_destination_when_group_picker_appears(
+    monkeypatch, tmp_path
+) -> None:
+    calls: list[object] = []
+
+    class FakeGroupOption:
+        def is_visible(self) -> bool:
+            return True
+
+        def scroll_into_view_if_needed(self) -> None:
+            calls.append("scroll_into_view_if_needed")
+
+    page = type("FakePage", (), {})()
+    marketplace_page = MarketplaceGroupSharePage(
+        page=page, screenshot_dir=tmp_path / "screenshots"
+    )
+    group_option = FakeGroupOption()
+    share_dialog = object()
+
+    monkeypatch.setattr(
+        marketplace_page, "find_share_dialog", lambda: calls.append("share_dialog") or share_dialog
+    )
+    monkeypatch.setattr(
+        marketplace_page,
+        "find_group_destination_option",
+        lambda resolved_share_dialog: calls.append(
+            ("find_group_destination_option", resolved_share_dialog)
+        )
+        or group_option,
+    )
+    monkeypatch.setattr(
+        marketplace_page,
+        "capture_checkpoint",
+        lambda name: calls.append(("checkpoint", name)),
+    )
+    monkeypatch.setattr(
+        "src.pages.marketplace_group_share_page.assert_locator_visible",
+        lambda locator, timeout_ms=5000: calls.append(("assert_locator_visible", locator, timeout_ms)),
+    )
+    monkeypatch.setattr(
+        "src.pages.marketplace_group_share_page.click_locator_visible",
+        lambda locator, page=None: calls.append(("click_locator_visible", locator, page)),
+    )
+    monkeypatch.setattr(
+        marketplace_page,
+        "assert_group_picker_visible",
+        lambda timeout_ms=5000: calls.append(("assert_group_picker_visible", timeout_ms)),
+    )
+
+    marketplace_page.open_group_destination()
+
+    assert calls == [
+        "share_dialog",
+        ("checkpoint", "marketplace_open_group_destination_before_click"),
+        ("find_group_destination_option", share_dialog),
+        ("assert_locator_visible", group_option, 5000),
+        "scroll_into_view_if_needed",
+        ("click_locator_visible", group_option, page),
+        ("assert_group_picker_visible", 1500),
+    ]
 
 
 def test_marketplace_group_share_page_selects_group_within_group_picker(
@@ -1037,3 +1495,106 @@ def test_marketplace_group_share_page_accepts_visible_image_as_content_signal(
     marketplace_page.assert_group_composer_content_ready("Botitas")
 
     assert ("visible", "locator:img:first", 10000) in calls
+
+
+def test_marketplace_group_share_page_detects_published_visible_from_toast(
+    monkeypatch, tmp_path
+) -> None:
+    marketplace_page = MarketplaceGroupSharePage(
+        page=type("FakePage", (), {})(), screenshot_dir=tmp_path / "screenshots"
+    )
+    monkeypatch.setattr(
+        marketplace_page, "get_visible_toast_text", lambda: "Tu publicación se publicó."
+    )
+    monkeypatch.setattr(marketplace_page, "is_group_composer_visible", lambda: False)
+    monkeypatch.setattr(marketplace_page, "get_visible_error_text", lambda: None)
+    monkeypatch.setattr(
+        marketplace_page, "get_visible_page_state_text", lambda: "Tus publicaciones"
+    )
+
+    outcome = marketplace_page.detect_post_publish_status()
+
+    assert outcome == PostPublishOutcome(
+        status="published_visible",
+        observed_text=(
+            "toast=Tu publicación se publicó. | composer_visible=False | "
+            "error=<none> | page_state=Tus publicaciones"
+        ),
+        signal="toast",
+    )
+
+
+def test_marketplace_group_share_page_detects_submitted_for_approval_from_page_state(
+    monkeypatch, tmp_path
+) -> None:
+    marketplace_page = MarketplaceGroupSharePage(
+        page=type("FakePage", (), {})(), screenshot_dir=tmp_path / "screenshots"
+    )
+    monkeypatch.setattr(marketplace_page, "get_visible_toast_text", lambda: None)
+    monkeypatch.setattr(marketplace_page, "is_group_composer_visible", lambda: False)
+    monkeypatch.setattr(marketplace_page, "get_visible_error_text", lambda: None)
+    monkeypatch.setattr(
+        marketplace_page,
+        "get_visible_page_state_text",
+        lambda: "Tu publicación fue enviada para aprobación",
+    )
+
+    outcome = marketplace_page.detect_post_publish_status()
+
+    assert outcome == PostPublishOutcome(
+        status="submitted_for_approval",
+        observed_text=(
+            "toast=<none> | composer_visible=False | error=<none> | "
+            "page_state=Tu publicación fue enviada para aprobación"
+        ),
+        signal="page_state",
+    )
+
+
+def test_marketplace_group_share_page_detects_publish_blocked_when_composer_error_visible(
+    monkeypatch, tmp_path
+) -> None:
+    marketplace_page = MarketplaceGroupSharePage(
+        page=type("FakePage", (), {})(), screenshot_dir=tmp_path / "screenshots"
+    )
+    monkeypatch.setattr(marketplace_page, "get_visible_toast_text", lambda: None)
+    monkeypatch.setattr(marketplace_page, "is_group_composer_visible", lambda: True)
+    monkeypatch.setattr(
+        marketplace_page, "get_visible_error_text", lambda: "Algo no funciona"
+    )
+    monkeypatch.setattr(
+        marketplace_page, "get_visible_page_state_text", lambda: "Crear publicación"
+    )
+
+    outcome = marketplace_page.detect_post_publish_status()
+
+    assert outcome == PostPublishOutcome(
+        status="publish_blocked_or_unavailable",
+        observed_text=(
+            "toast=<none> | composer_visible=True | error=Algo no funciona | "
+            "page_state=Crear publicación"
+        ),
+        signal="composer+error",
+    )
+
+
+def test_marketplace_group_share_page_detects_publish_unconfirmed_without_signals(
+    monkeypatch, tmp_path
+) -> None:
+    marketplace_page = MarketplaceGroupSharePage(
+        page=type("FakePage", (), {})(), screenshot_dir=tmp_path / "screenshots"
+    )
+    monkeypatch.setattr(marketplace_page, "get_visible_toast_text", lambda: None)
+    monkeypatch.setattr(marketplace_page, "is_group_composer_visible", lambda: False)
+    monkeypatch.setattr(marketplace_page, "get_visible_error_text", lambda: None)
+    monkeypatch.setattr(marketplace_page, "get_visible_page_state_text", lambda: None)
+
+    outcome = marketplace_page.detect_post_publish_status()
+
+    assert outcome == PostPublishOutcome(
+        status="publish_unconfirmed",
+        observed_text=(
+            "toast=<none> | composer_visible=False | error=<none> | page_state=<none>"
+        ),
+        signal="fallback",
+    )
