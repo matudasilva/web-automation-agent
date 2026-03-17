@@ -573,12 +573,12 @@ class MarketplaceGroupSharePage(BasePage):
         )
 
         if toast_text is not None:
-            classified_status = self._classify_publish_text(toast_text)
+            classified_status = self._classify_post_publish_toast_text(toast_text)
             if classified_status is not None:
                 return PostPublishOutcome(
                     status=classified_status,
                     observed_text=observed_text,
-                    signal="toast",
+                    signal=self._get_post_publish_toast_signal(classified_status),
                 )
 
         if composer_visible:
@@ -659,15 +659,49 @@ class MarketplaceGroupSharePage(BasePage):
         normalized = " ".join(text.split())
         return normalized or None
 
-    def _classify_publish_text(self, text: str) -> str | None:
-        normalized_text = text.lower()
+    def _classify_post_publish_toast_text(self, text: str) -> str | None:
+        normalized_text = self.normalize_text_for_comparison(text)
+        if "se compartio en tu grupo" in normalized_text:
+            return "publish_success_confirmed"
         if any(
             signal in normalized_text
             for signal in [
-                "se publicó",
+                "se envio a los administradores para su aprobacion",
+                "se envio a los administradores para aprobacion",
+                "enviada a los administradores para su aprobacion",
+                "enviada a los administradores para aprobacion",
+            ]
+        ):
+            return "submitted_for_approval"
+        if any(
+            signal in normalized_text
+            for signal in [
+                "no se pudo",
+                "error",
+                "intenta nuevamente",
+                "algo no funciona. esto puede deberse a un error tecnico que estamos intentando solucionar.",
+            ]
+        ):
+            return "publish_needs_retry"
+        return self._classify_publish_text(text)
+
+    def _get_post_publish_toast_signal(self, status: str) -> str:
+        if status == "publish_success_confirmed":
+            return "toast_success"
+        if status == "submitted_for_approval":
+            return "toast_approval"
+        if status == "publish_needs_retry":
+            return "toast_retry_or_error"
+        return "toast"
+
+    def _classify_publish_text(self, text: str) -> str | None:
+        normalized_text = self.normalize_text_for_comparison(text)
+        if any(
+            signal in normalized_text
+            for signal in [
                 "se publico",
                 "publicaste",
-                "publicación publicada",
+                "publicacion publicada",
                 "publicacion publicada",
             ]
         ):
@@ -675,11 +709,8 @@ class MarketplaceGroupSharePage(BasePage):
         if any(
             signal in normalized_text
             for signal in [
-                "aprobación",
                 "aprobacion",
-                "en revisión",
                 "en revision",
-                "pendiente de revisión",
                 "pendiente de revision",
             ]
         ):
@@ -689,7 +720,6 @@ class MarketplaceGroupSharePage(BasePage):
             for signal in [
                 "algo no funciona",
                 "no se pudo",
-                "inténtalo de nuevo",
                 "intentalo de nuevo",
                 "error",
                 "no disponible",

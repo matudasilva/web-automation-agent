@@ -256,9 +256,9 @@ def test_bootstrap_waits_for_manual_publish_confirmation_when_enabled(
     monkeypatch.setattr(
         "src.pages.marketplace_group_share_page.MarketplaceGroupSharePage.detect_post_publish_status",
         lambda self: PostPublishOutcome(
-            status="published_visible",
-            observed_text="toast=Tu publicación se publicó.",
-            signal="toast",
+            status="publish_success_confirmed",
+            observed_text="toast=Se compartió en tu grupo. Ver",
+            signal="toast_success",
         ),
     )
     monkeypatch.setattr(
@@ -279,9 +279,9 @@ def test_bootstrap_waits_for_manual_publish_confirmation_when_enabled(
     assert "marketplace_group_share_flow_manual_publish_handoff" in caplog.text
     assert (
         "marketplace_group_share_flow_manual_publish_result "
-        "status=published_visible signal=toast observed_text=toast=Tu publicación se publicó."
+        "status=publish_success_confirmed signal=toast_success observed_text=toast=Se compartió en tu grupo. Ver"
     ) in caplog.text
-    assert "post_publish_status=published_visible" in caplog.text
+    assert "post_publish_status=publish_success_confirmed" in caplog.text
 
 
 def test_bootstrap_runs_marketplace_group_share_batch_from_targets_file(
@@ -382,5 +382,217 @@ def test_bootstrap_runs_marketplace_group_share_batch_from_targets_file(
     )
     assert (
         "marketplace_group_share_batch_iteration_start index=2 total=2 group_name=Grupo Dos"
+        in caplog.text
+    )
+
+
+def test_bootstrap_retries_group_after_publish_warning_and_continues(
+    tmp_path, monkeypatch, caplog
+) -> None:
+    screenshot_dir = tmp_path / "screenshots"
+    artifact_dir = screenshot_dir / "run-retry-warning"
+    group_targets_file = tmp_path / "group_targets.txt"
+    group_targets_file.write_text("Grupo Uno\nGrupo Dos\n", encoding="utf-8")
+    settings = Settings(
+        base_url="https://www.facebook.com",
+        browser="firefox",
+        headless=False,
+        browser_profile_dir=tmp_path / "profile",
+        screenshot_dir=screenshot_dir,
+        allowed_domain="facebook.com",
+        wait_for_manual_ready=False,
+        wait_for_manual_publish_confirmation=True,
+        ui_action_delay_ms=700,
+        ui_iteration_delay_ms=1500,
+        marketplace_group_targets_file=group_targets_file,
+        marketplace_listing_title="Botitas de gamuza tipo desert",
+        marketplace_group_name="Fallback Group",
+    )
+
+    class FakePage:
+        def __init__(self) -> None:
+            self.timeout_calls: list[int] = []
+
+        def wait_for_timeout(self, timeout_ms: int) -> None:
+            self.timeout_calls.append(timeout_ms)
+
+    page = FakePage()
+
+    class FakeContextManager:
+        def __enter__(self):
+            return page
+
+        def __exit__(self, exc_type, exc, tb):
+            return None
+
+    monkeypatch.setattr("src.main.get_settings", lambda: settings)
+    monkeypatch.setattr("src.main.browser_session", lambda _settings: FakeContextManager())
+    monkeypatch.setattr("src.main.configure_ui_action_delay", lambda delay_ms: None)
+    monkeypatch.setattr("src.main.configure_logging", lambda: None)
+    caplog.set_level(logging.INFO, logger="src.main")
+    monkeypatch.setattr(
+        "src.main.create_run_context",
+        lambda _artifact_base_dir: RunContext(
+            run_id="run-retry-warning", artifact_dir=artifact_dir
+        ),
+    )
+    monkeypatch.setattr(
+        "src.main.run_landing_flow",
+        lambda page, settings, run_context, logger: FlowResult(
+            success=True,
+            step="capture_checkpoint",
+            current_url="https://www.facebook.com",
+            run_id="run-retry-warning",
+            artifact_dir=artifact_dir,
+            screenshot_path=artifact_dir / "landing_ready.png",
+        ),
+    )
+
+    marketplace_calls: list[str] = []
+
+    def fake_run_marketplace_group_share_flow(
+        page, settings, run_context, logger, listing_title, group_name
+    ):
+        marketplace_calls.append(group_name)
+        return FlowResult(
+            success=True,
+            step="capture_checkpoint",
+            current_url="https://www.facebook.com/marketplace/you/selling",
+            run_id="run-retry-warning",
+            artifact_dir=run_context.artifact_dir,
+            screenshot_path=run_context.artifact_dir / "marketplace_group_share_ready.png",
+        )
+
+    outcomes = iter(
+        [
+            PostPublishOutcome(
+                status="publish_needs_retry",
+                observed_text="toast=No se pudo compartir.",
+                signal="toast_retry_or_error",
+            ),
+            PostPublishOutcome(
+                status="publish_needs_retry",
+                observed_text="toast=No se pudo compartir.",
+                signal="toast_retry_or_error",
+            ),
+            PostPublishOutcome(
+                status="publish_needs_retry",
+                observed_text="toast=No se pudo compartir.",
+                signal="toast_retry_or_error",
+            ),
+            PostPublishOutcome(
+                status="publish_success_confirmed",
+                observed_text="toast=Se compartió en tu grupo. Ver",
+                signal="toast_success",
+            ),
+        ]
+    )
+
+    monkeypatch.setattr("src.main.run_marketplace_group_share_flow", fake_run_marketplace_group_share_flow)
+    monkeypatch.setattr(
+        "src.main.wait_for_manual_publish_confirmation",
+        lambda page, screenshot_dir, logger: (
+            next(outcomes),
+            screenshot_dir / "manual_publish_result.png",
+        ),
+    )
+
+    screenshot_path = run_bootstrap()
+
+    assert marketplace_calls == ["Grupo Uno", "Grupo Uno", "Grupo Uno", "Grupo Dos"]
+    assert screenshot_path == artifact_dir / "group-02" / "manual_publish_result.png"
+    assert (
+        "marketplace_group_share_batch_group_skipped_after_publish_retry_exhausted group_name=Grupo Uno attempts=3"
+        in caplog.text
+    )
+
+
+def test_bootstrap_retries_group_flow_failure_and_continues(
+    tmp_path, monkeypatch, caplog
+) -> None:
+    screenshot_dir = tmp_path / "screenshots"
+    artifact_dir = screenshot_dir / "run-retry-failure"
+    group_targets_file = tmp_path / "group_targets.txt"
+    group_targets_file.write_text("Grupo Uno\nGrupo Dos\n", encoding="utf-8")
+    settings = Settings(
+        base_url="https://example.com",
+        browser="firefox",
+        headless=True,
+        browser_profile_dir=tmp_path / "profile",
+        screenshot_dir=screenshot_dir,
+        allowed_domain="example.com",
+        wait_for_manual_ready=False,
+        wait_for_manual_publish_confirmation=False,
+        ui_action_delay_ms=700,
+        ui_iteration_delay_ms=1500,
+        marketplace_group_targets_file=group_targets_file,
+        marketplace_listing_title="Botitas de gamuza tipo desert",
+        marketplace_group_name="Fallback Group",
+    )
+
+    class FakePage:
+        def __init__(self) -> None:
+            self.timeout_calls: list[int] = []
+
+        def wait_for_timeout(self, timeout_ms: int) -> None:
+            self.timeout_calls.append(timeout_ms)
+
+    page = FakePage()
+
+    class FakeContextManager:
+        def __enter__(self):
+            return page
+
+        def __exit__(self, exc_type, exc, tb):
+            return None
+
+    monkeypatch.setattr("src.main.get_settings", lambda: settings)
+    monkeypatch.setattr("src.main.browser_session", lambda _settings: FakeContextManager())
+    monkeypatch.setattr("src.main.configure_ui_action_delay", lambda delay_ms: None)
+    monkeypatch.setattr("src.main.configure_logging", lambda: None)
+    caplog.set_level(logging.INFO, logger="src.main")
+    monkeypatch.setattr(
+        "src.main.create_run_context",
+        lambda _artifact_base_dir: RunContext(
+            run_id="run-retry-failure", artifact_dir=artifact_dir
+        ),
+    )
+    monkeypatch.setattr(
+        "src.main.run_landing_flow",
+        lambda page, settings, run_context, logger: FlowResult(
+            success=True,
+            step="capture_checkpoint",
+            current_url="https://example.com",
+            run_id="run-retry-failure",
+            artifact_dir=artifact_dir,
+            screenshot_path=artifact_dir / "landing_ready.png",
+        ),
+    )
+
+    marketplace_calls: list[str] = []
+
+    def fake_run_marketplace_group_share_flow(
+        page, settings, run_context, logger, listing_title, group_name
+    ):
+        marketplace_calls.append(group_name)
+        if group_name == "Grupo Uno":
+            raise RuntimeError("group picker did not open")
+        return FlowResult(
+            success=True,
+            step="capture_checkpoint",
+            current_url="https://example.com/marketplace/you/selling",
+            run_id="run-retry-failure",
+            artifact_dir=run_context.artifact_dir,
+            screenshot_path=run_context.artifact_dir / "marketplace_group_share_ready.png",
+        )
+
+    monkeypatch.setattr("src.main.run_marketplace_group_share_flow", fake_run_marketplace_group_share_flow)
+
+    screenshot_path = run_bootstrap()
+
+    assert marketplace_calls == ["Grupo Uno", "Grupo Uno", "Grupo Uno", "Grupo Dos"]
+    assert screenshot_path == artifact_dir / "group-02" / "marketplace_group_share_ready.png"
+    assert (
+        "marketplace_group_share_batch_group_skipped_after_attempt_failures group_name=Grupo Uno attempts=3"
         in caplog.text
     )

@@ -1717,30 +1717,117 @@ def test_marketplace_group_share_page_accepts_visible_image_as_content_signal(
     assert ("visible", "locator:img:first", 10000) in calls
 
 
-def test_marketplace_group_share_page_detects_published_visible_from_toast(
+def test_marketplace_group_share_page_detects_publish_success_confirmed_from_group_toast(
     monkeypatch, tmp_path
 ) -> None:
     marketplace_page = MarketplaceGroupSharePage(
         page=type("FakePage", (), {})(), screenshot_dir=tmp_path / "screenshots"
     )
     monkeypatch.setattr(
-        marketplace_page, "get_visible_toast_text", lambda: "Tu publicación se publicó."
+        marketplace_page,
+        "get_visible_toast_text",
+        lambda: "Se compartió en tu grupo. Ver",
     )
     monkeypatch.setattr(marketplace_page, "is_group_composer_visible", lambda: False)
     monkeypatch.setattr(marketplace_page, "get_visible_error_text", lambda: None)
     monkeypatch.setattr(
-        marketplace_page, "get_visible_page_state_text", lambda: "Tus publicaciones"
+        marketplace_page, "get_visible_page_state_text", lambda: "Sugerencias de hoy"
     )
 
     outcome = marketplace_page.detect_post_publish_status()
 
     assert outcome == PostPublishOutcome(
-        status="published_visible",
+        status="publish_success_confirmed",
         observed_text=(
-            "toast=Tu publicación se publicó. | composer_visible=False | "
-            "error=<none> | page_state=Tus publicaciones"
+            "toast=Se compartió en tu grupo. Ver | composer_visible=False | "
+            "error=<none> | page_state=Sugerencias de hoy"
         ),
-        signal="toast",
+        signal="toast_success",
+    )
+
+
+def test_marketplace_group_share_page_detects_publish_needs_retry_from_toast(
+    monkeypatch, tmp_path
+) -> None:
+    marketplace_page = MarketplaceGroupSharePage(
+        page=type("FakePage", (), {})(), screenshot_dir=tmp_path / "screenshots"
+    )
+    monkeypatch.setattr(
+        marketplace_page,
+        "get_visible_toast_text",
+        lambda: "No se pudo compartir. Intenta nuevamente.",
+    )
+    monkeypatch.setattr(marketplace_page, "is_group_composer_visible", lambda: False)
+    monkeypatch.setattr(marketplace_page, "get_visible_error_text", lambda: None)
+    monkeypatch.setattr(marketplace_page, "get_visible_page_state_text", lambda: None)
+
+    outcome = marketplace_page.detect_post_publish_status()
+
+    assert outcome == PostPublishOutcome(
+        status="publish_needs_retry",
+        observed_text=(
+            "toast=No se pudo compartir. Intenta nuevamente. | "
+            "composer_visible=False | error=<none> | page_state=<none>"
+        ),
+        signal="toast_retry_or_error",
+    )
+
+
+def test_marketplace_group_share_page_detects_publish_needs_retry_from_warning_toast(
+    monkeypatch, tmp_path
+) -> None:
+    marketplace_page = MarketplaceGroupSharePage(
+        page=type("FakePage", (), {})(), screenshot_dir=tmp_path / "screenshots"
+    )
+    monkeypatch.setattr(
+        marketplace_page,
+        "get_visible_toast_text",
+        lambda: (
+            "Algo no funciona. Esto puede deberse a un error técnico que "
+            "estamos intentando solucionar."
+        ),
+    )
+    monkeypatch.setattr(marketplace_page, "is_group_composer_visible", lambda: False)
+    monkeypatch.setattr(marketplace_page, "get_visible_error_text", lambda: None)
+    monkeypatch.setattr(marketplace_page, "get_visible_page_state_text", lambda: None)
+
+    outcome = marketplace_page.detect_post_publish_status()
+
+    assert outcome == PostPublishOutcome(
+        status="publish_needs_retry",
+        observed_text=(
+            "toast=Algo no funciona. Esto puede deberse a un error técnico que "
+            "estamos intentando solucionar. | composer_visible=False | "
+            "error=<none> | page_state=<none>"
+        ),
+        signal="toast_retry_or_error",
+    )
+
+
+def test_marketplace_group_share_page_detects_submitted_for_approval_from_toast(
+    monkeypatch, tmp_path
+) -> None:
+    marketplace_page = MarketplaceGroupSharePage(
+        page=type("FakePage", (), {})(), screenshot_dir=tmp_path / "screenshots"
+    )
+    monkeypatch.setattr(
+        marketplace_page,
+        "get_visible_toast_text",
+        lambda: "Tu publicación se envió a los administradores para su aprobación.",
+    )
+    monkeypatch.setattr(marketplace_page, "is_group_composer_visible", lambda: False)
+    monkeypatch.setattr(marketplace_page, "get_visible_error_text", lambda: None)
+    monkeypatch.setattr(marketplace_page, "get_visible_page_state_text", lambda: None)
+
+    outcome = marketplace_page.detect_post_publish_status()
+
+    assert outcome == PostPublishOutcome(
+        status="submitted_for_approval",
+        observed_text=(
+            "toast=Tu publicación se envió a los administradores para su aprobación. | "
+            "composer_visible=False | error=<none> | page_state=<none>"
+        ),
+        signal="toast_approval",
     )
 
 

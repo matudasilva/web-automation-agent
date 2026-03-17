@@ -16,6 +16,8 @@ from src.flows.run_context import RunContext, create_run_context
 from src.pages.marketplace_group_share_page import MarketplaceGroupSharePage
 from src.services.screenshot_service import capture_page_screenshot
 
+MARKETPLACE_GROUP_MAX_ATTEMPTS = 3
+
 
 def run_bootstrap() -> Path:
     configure_logging()
@@ -108,37 +110,91 @@ def run_marketplace_group_share_batch(
             total_groups,
             group_name,
         )
-        flow_result = run_marketplace_group_share_flow(
+        flow_result = run_group_with_retries(
             page=page,
             settings=settings,
             run_context=iteration_run_context,
             logger=logger,
-            listing_title=settings.marketplace_listing_title,
             group_name=group_name,
         )
-        if settings.wait_for_manual_publish_confirmation:
-            post_publish_outcome, screenshot_path = wait_for_manual_publish_confirmation(
-                page=page,
-                screenshot_dir=iteration_run_context.artifact_dir,
+        if flow_result is not None:
+            last_flow_result = flow_result
+            log_flow_execution_summary(
                 logger=logger,
+                flow_name="marketplace_group_share_flow",
+                flow_result=flow_result,
             )
-            flow_result = replace(
-                flow_result,
-                screenshot_path=screenshot_path,
-                post_publish_outcome=post_publish_outcome,
-            )
-        last_flow_result = flow_result
-        log_flow_execution_summary(
-            logger=logger,
-            flow_name="marketplace_group_share_flow",
-            flow_result=flow_result,
-        )
         if index < total_groups:
             page.wait_for_timeout(settings.ui_iteration_delay_ms)
 
     if last_flow_result is None:
         raise RuntimeError("No marketplace group targets were resolved for execution")
     return last_flow_result
+
+
+def run_group_with_retries(
+    *, page, settings, run_context: RunContext, logger, group_name: str
+) -> FlowResult | None:
+    for attempt in range(1, MARKETPLACE_GROUP_MAX_ATTEMPTS + 1):
+        logger.info(
+            "marketplace_group_share_batch_group_attempt_start group_name=%s attempt=%s max_attempts=%s",
+            group_name,
+            attempt,
+            MARKETPLACE_GROUP_MAX_ATTEMPTS,
+        )
+        try:
+            flow_result = run_marketplace_group_share_flow(
+                page=page,
+                settings=settings,
+                run_context=run_context,
+                logger=logger,
+                listing_title=settings.marketplace_listing_title,
+                group_name=group_name,
+            )
+            if settings.wait_for_manual_publish_confirmation:
+                post_publish_outcome, screenshot_path = (
+                    wait_for_manual_publish_confirmation(
+                        page=page,
+                        screenshot_dir=run_context.artifact_dir,
+                        logger=logger,
+                    )
+                )
+                flow_result = replace(
+                    flow_result,
+                    screenshot_path=screenshot_path,
+                    post_publish_outcome=post_publish_outcome,
+                )
+                if post_publish_outcome.status == "publish_needs_retry":
+                    logger.warning(
+                        "marketplace_group_share_batch_group_attempt_publish_retry_needed group_name=%s attempt=%s max_attempts=%s",
+                        group_name,
+                        attempt,
+                        MARKETPLACE_GROUP_MAX_ATTEMPTS,
+                    )
+                    if attempt < MARKETPLACE_GROUP_MAX_ATTEMPTS:
+                        continue
+                    logger.error(
+                        "marketplace_group_share_batch_group_skipped_after_publish_retry_exhausted group_name=%s attempts=%s",
+                        group_name,
+                        MARKETPLACE_GROUP_MAX_ATTEMPTS,
+                    )
+                    return None
+            return flow_result
+        except Exception:
+            logger.exception(
+                "marketplace_group_share_batch_group_attempt_failed group_name=%s attempt=%s max_attempts=%s",
+                group_name,
+                attempt,
+                MARKETPLACE_GROUP_MAX_ATTEMPTS,
+            )
+            if attempt >= MARKETPLACE_GROUP_MAX_ATTEMPTS:
+                logger.error(
+                    "marketplace_group_share_batch_group_skipped_after_attempt_failures group_name=%s attempts=%s",
+                    group_name,
+                    MARKETPLACE_GROUP_MAX_ATTEMPTS,
+                )
+                return None
+    return None
 
 
 def resolve_group_targets(settings) -> list[str]:
