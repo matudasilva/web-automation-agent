@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from src.core.config import Settings
 from src.core.post_publish_status import PostPublishOutcome
 from src.main import (
     execute_auto_publish,
     finalize_group_publish,
+    get_local_now,
     load_group_targets_file,
     resolve_group_targets,
 )
@@ -19,6 +22,20 @@ def test_load_group_targets_file_ignores_blank_lines(tmp_path) -> None:
     targets = load_group_targets_file(group_targets_file)
 
     assert targets == ["Grupo Uno", "Grupo Dos"]
+
+
+def test_get_local_now_uses_uruguay_timezone(monkeypatch) -> None:
+    expected_now = datetime(2026, 3, 18, 10, 15, tzinfo=ZoneInfo("America/Montevideo"))
+
+    class FakeDateTime:
+        @staticmethod
+        def now(tz):
+            assert tz == ZoneInfo("America/Montevideo")
+            return expected_now
+
+    monkeypatch.setattr("src.main.datetime", FakeDateTime)
+
+    assert get_local_now() == expected_now
 
 
 def test_resolve_group_targets_falls_back_to_single_group_when_file_missing(

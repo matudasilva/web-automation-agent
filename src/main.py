@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from src.browser.factory import browser_session
 from src.browser.ui_actions import configure_ui_action_delay
@@ -14,6 +16,8 @@ from src.flows.landing_flow import run_landing_flow
 from src.flows.marketplace_group_share_flow import run_marketplace_group_share_flow
 from src.flows.run_context import RunContext, create_run_context
 from src.pages.marketplace_group_share_page import MarketplaceGroupSharePage
+from src.runtime.job_selector import select_runtime_job
+from src.runtime.runtime_loader import load_runtime_planning
 from src.services.screenshot_service import capture_page_screenshot
 
 MARKETPLACE_GROUP_MAX_ATTEMPTS = 3
@@ -25,10 +29,38 @@ def run_bootstrap() -> Path:
 
     settings = get_settings()
     configure_ui_action_delay(settings.ui_action_delay_ms)
+    run_context = create_run_context(settings.screenshot_dir)
+
+    if settings.runtime_planning_dry_run:
+        runtime_planning = load_runtime_planning(settings)
+        logger.info(
+            "runtime_planning_summary articles=%s categories=%s cohorts=%s posting_windows=%s",
+            runtime_planning.article_count,
+            len(runtime_planning.categories),
+            len(runtime_planning.cohorts),
+            runtime_planning.posting_window_count,
+        )
+        selected_job = select_runtime_job(
+            runtime_planning,
+            current_datetime=get_local_now(),
+        )
+        if selected_job is None:
+            logger.info("no_eligible_runtime_job")
+        else:
+            logger.info(
+                "runtime_job_selected article_title=%s category=%s cohort=%s group_name=%s posting_window=%s",
+                selected_job.article_title,
+                selected_job.category,
+                selected_job.cohort,
+                selected_job.group_name,
+                selected_job.matched_posting_window,
+            )
+        logger.info("runtime_planning_dry_run_complete")
+        return run_context.artifact_dir
+
     validate_allowed_domain(
         base_url=settings.base_url, allowed_domain=settings.allowed_domain
     )
-    run_context = create_run_context(settings.screenshot_dir)
 
     logger.info("bootstrap_start")
     with browser_session(settings) as page:
@@ -60,6 +92,10 @@ def run_bootstrap() -> Path:
 
 def main() -> None:
     run_bootstrap()
+
+
+def get_local_now() -> datetime:
+    return datetime.now(ZoneInfo("America/Montevideo"))
 
 
 def wait_for_manual_ready(*, page, base_url: str, logger) -> None:
