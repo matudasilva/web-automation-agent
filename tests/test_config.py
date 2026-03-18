@@ -15,6 +15,15 @@ def test_get_settings_reads_browser_profile_and_manual_ready(monkeypatch) -> Non
     monkeypatch.setenv("WAIT_FOR_MANUAL_READY", "true")
     monkeypatch.setenv("WAIT_FOR_MANUAL_PUBLISH_CONFIRMATION", "true")
     monkeypatch.setenv("AUTO_PUBLISH_TO_GROUPS", "true")
+    monkeypatch.setenv("RUNTIME_PLANNING_DRY_RUN", "true")
+    monkeypatch.setenv("RUNTIME_ARTICLE_ROUTING_FILE", "./runtime/article_routing.csv")
+    monkeypatch.setenv(
+        "RUNTIME_CATEGORY_ROUTING_FILE", "./runtime/category_routing.csv"
+    )
+    monkeypatch.setenv("RUNTIME_GROUP_COHORTS_FILE", "./runtime/group_cohorts.csv")
+    monkeypatch.setenv(
+        "RUNTIME_POSTING_WINDOWS_FILE", "./runtime/posting_windows.csv"
+    )
     monkeypatch.setenv("UI_ACTION_DELAY_MS", "700")
     monkeypatch.setenv("UI_ITERATION_DELAY_MS", "1500")
     monkeypatch.setenv("MARKETPLACE_LISTING_DISCOVERY_MAX_SCROLLS", "4")
@@ -37,8 +46,17 @@ def test_get_settings_reads_browser_profile_and_manual_ready(monkeypatch) -> Non
     assert settings.wait_for_manual_ready is True
     assert settings.wait_for_manual_publish_confirmation is True
     assert settings.auto_publish_to_groups is True
+    assert settings.runtime_planning_dry_run is True
     assert settings.ui_action_delay_ms == 700
     assert settings.ui_iteration_delay_ms == 1500
+    assert settings.runtime_article_routing_file == Path("./runtime/article_routing.csv")
+    assert settings.runtime_category_routing_file == Path(
+        "./runtime/category_routing.csv"
+    )
+    assert settings.runtime_group_cohorts_file == Path("./runtime/group_cohorts.csv")
+    assert settings.runtime_posting_windows_file == Path(
+        "./runtime/posting_windows.csv"
+    )
     assert settings.marketplace_listing_discovery_max_scrolls == 4
     assert settings.marketplace_listing_discovery_scroll_delay_ms == 450
     assert settings.marketplace_group_targets_file == Path("./runtime/group_targets.txt")

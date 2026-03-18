@@ -16,7 +16,7 @@ from src.flows.landing_flow import run_landing_flow
 from src.flows.marketplace_group_share_flow import run_marketplace_group_share_flow
 from src.flows.run_context import RunContext, create_run_context
 from src.pages.marketplace_group_share_page import MarketplaceGroupSharePage
-from src.runtime.job_selector import select_runtime_job
+from src.runtime.job_selector import diagnose_runtime_job_selection
 from src.runtime.runtime_loader import load_runtime_planning
 from src.services.screenshot_service import capture_page_screenshot
 
@@ -40,12 +40,16 @@ def run_bootstrap() -> Path:
             len(runtime_planning.cohorts),
             runtime_planning.posting_window_count,
         )
-        selected_job = select_runtime_job(
+        selection_diagnostic = diagnose_runtime_job_selection(
             runtime_planning,
             current_datetime=get_local_now(),
         )
+        selected_job = selection_diagnostic.selected_job
         if selected_job is None:
-            logger.info("no_eligible_runtime_job")
+            logger.info(
+                "no_eligible_runtime_job reason=%s",
+                selection_diagnostic.no_selection_reason,
+            )
         else:
             logger.info(
                 "runtime_job_selected article_title=%s category=%s cohort=%s group_name=%s posting_window=%s",

@@ -26,6 +26,19 @@ class Settings(BaseModel):
     auto_publish_to_groups: bool = Field(default=False)
     ui_action_delay_ms: int = Field(default=700)
     ui_iteration_delay_ms: int = Field(default=1500)
+    runtime_planning_dry_run: bool = Field(default=False)
+    runtime_article_routing_file: Path = Field(
+        default=Path("./runtime/article_routing.csv")
+    )
+    runtime_category_routing_file: Path = Field(
+        default=Path("./runtime/category_routing.csv")
+    )
+    runtime_group_cohorts_file: Path = Field(
+        default=Path("./runtime/group_cohorts.csv")
+    )
+    runtime_posting_windows_file: Path = Field(
+        default=Path("./runtime/posting_windows.csv")
+    )
     marketplace_listing_discovery_max_scrolls: int = Field(default=3)
     marketplace_listing_discovery_scroll_delay_ms: int = Field(default=400)
     marketplace_group_targets_file: Path = Field(
@@ -57,6 +70,19 @@ def get_settings() -> Settings:
         auto_publish_to_groups=_read_bool("AUTO_PUBLISH_TO_GROUPS", False),
         ui_action_delay_ms=_read_int("UI_ACTION_DELAY_MS", 700),
         ui_iteration_delay_ms=_read_int("UI_ITERATION_DELAY_MS", 1500),
+        runtime_planning_dry_run=_read_bool("RUNTIME_PLANNING_DRY_RUN", False),
+        runtime_article_routing_file=Path(
+            _read_env("RUNTIME_ARTICLE_ROUTING_FILE", "./runtime/article_routing.csv")
+        ),
+        runtime_category_routing_file=Path(
+            _read_env("RUNTIME_CATEGORY_ROUTING_FILE", "./runtime/category_routing.csv")
+        ),
+        runtime_group_cohorts_file=Path(
+            _read_env("RUNTIME_GROUP_COHORTS_FILE", "./runtime/group_cohorts.csv")
+        ),
+        runtime_posting_windows_file=Path(
+            _read_env("RUNTIME_POSTING_WINDOWS_FILE", "./runtime/posting_windows.csv")
+        ),
         marketplace_listing_discovery_max_scrolls=_read_int(
             "MARKETPLACE_LISTING_DISCOVERY_MAX_SCROLLS", 3
         ),

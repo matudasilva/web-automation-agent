@@ -104,6 +104,7 @@ python -m src.main
 This will:
 
 - load settings from environment
+- optionally load and validate runtime planning CSV files in dry-run mode
 - validate the configured allowed domain
 - launch the configured Playwright browser session
 - optionally reuse a persistent browser profile
@@ -142,8 +143,17 @@ Relevant variables:
 - `WAIT_FOR_MANUAL_READY=true` opens `BASE_URL` and waits for Enter before continuing
 - `WAIT_FOR_MANUAL_PUBLISH_CONFIRMATION=true` keeps the final publish action manual
 - `AUTO_PUBLISH_TO_GROUPS=true` enables automatic clicking of the final `Publicar` button in the group composer
+- `RUNTIME_PLANNING_DRY_RUN=true` validates runtime planning CSV files and logs a summary without opening a browser
+- `RUNTIME_ARTICLE_ROUTING_FILE`, `RUNTIME_CATEGORY_ROUTING_FILE`, `RUNTIME_GROUP_COHORTS_FILE`, and `RUNTIME_POSTING_WINDOWS_FILE` point to the runtime planning CSV files used by dry-run validation
 - `MARKETPLACE_LISTING_TITLE` is matched partially to tolerate punctuation or truncated UI text
 - `MARKETPLACE_GROUP_NAME` selects the destination group in the share flow
+
+Runtime planning CSV schemas validated by the dry-run:
+
+- `article_routing.csv`: `article_title`, `category`
+- `category_routing.csv`: `category`, `cohort`
+- `group_cohorts.csv`: `group_name`, `cohort`
+- `posting_windows.csv`: `cohort`, `day_of_week`, `start_time`, `end_time`
 
 ## Run Tests
 

@@ -181,6 +181,69 @@ def test_bootstrap_runtime_planning_dry_run_logs_summary_and_skips_browser(
     assert "runtime_planning_dry_run_complete" in caplog.text
 
 
+def test_bootstrap_runtime_planning_dry_run_logs_no_selection_reason(
+    tmp_path, monkeypatch, caplog
+) -> None:
+    screenshot_dir = tmp_path / "screenshots"
+    artifact_dir = screenshot_dir / "run-runtime-dry-run-none"
+    article_file = tmp_path / "article_routing.csv"
+    article_file.write_text(
+        "article_title,category\nEnchufe Inteligente,Smart Home\n",
+        encoding="utf-8",
+    )
+    category_file = tmp_path / "category_routing.csv"
+    category_file.write_text(
+        "category,cohort\nSmart Home,Evening Groups\n",
+        encoding="utf-8",
+    )
+    group_cohorts_file = tmp_path / "group_cohorts.csv"
+    group_cohorts_file.write_text(
+        "group_name,cohort\nGrupo Uno,Evening Groups\n",
+        encoding="utf-8",
+    )
+    posting_windows_file = tmp_path / "posting_windows.csv"
+    posting_windows_file.write_text(
+        "cohort,day_of_week,start_time,end_time\nEvening Groups,monday,18:00,20:00\n",
+        encoding="utf-8",
+    )
+    settings = Settings(
+        screenshot_dir=screenshot_dir,
+        runtime_planning_dry_run=True,
+        runtime_article_routing_file=article_file,
+        runtime_category_routing_file=category_file,
+        runtime_group_cohorts_file=group_cohorts_file,
+        runtime_posting_windows_file=posting_windows_file,
+    )
+
+    monkeypatch.setattr("src.main.get_settings", lambda: settings)
+    monkeypatch.setattr("src.main.configure_logging", lambda: None)
+    monkeypatch.setattr("src.main.configure_ui_action_delay", lambda delay_ms: None)
+    monkeypatch.setattr(
+        "src.main.get_local_now",
+        lambda: datetime(2026, 3, 16, 17, 59),
+    )
+    monkeypatch.setattr(
+        "src.main.create_run_context",
+        lambda _artifact_base_dir: RunContext(
+            run_id="run-runtime-dry-run-none", artifact_dir=artifact_dir
+        ),
+    )
+
+    def fail_browser_session(_settings):
+        raise AssertionError("browser should not open")
+
+    monkeypatch.setattr("src.main.browser_session", fail_browser_session)
+    caplog.set_level(logging.INFO, logger="src.main")
+
+    result = run_bootstrap()
+
+    assert result == artifact_dir
+    assert (
+        "no_eligible_runtime_job reason=no_active_posting_windows" in caplog.text
+    )
+    assert "runtime_planning_dry_run_complete" in caplog.text
+
+
 def test_bootstrap_waits_for_manual_ready_when_enabled(
     tmp_path, monkeypatch, caplog
 ) -> None:

@@ -32,15 +32,33 @@ class RuntimeJob:
         return f"{self.day_of_week} {self.start_time}-{self.end_time}"
 
 
+@dataclass(frozen=True)
+class RuntimeJobSelectionDiagnostic:
+    selected_job: RuntimeJob | None
+    no_selection_reason: str | None
+
+
 def select_runtime_job(
     runtime_planning: RuntimePlanningData, *, current_datetime: datetime
 ) -> RuntimeJob | None:
+    return diagnose_runtime_job_selection(
+        runtime_planning,
+        current_datetime=current_datetime,
+    ).selected_job
+
+
+def diagnose_runtime_job_selection(
+    runtime_planning: RuntimePlanningData, *, current_datetime: datetime
+) -> RuntimeJobSelectionDiagnostic:
     open_windows = find_open_posting_windows(
         runtime_planning=runtime_planning,
         current_datetime=current_datetime,
     )
     if not open_windows:
-        return None
+        return RuntimeJobSelectionDiagnostic(
+            selected_job=None,
+            no_selection_reason="no_active_posting_windows",
+        )
 
     eligible_jobs: list[RuntimeJob] = []
     category_rows_by_key = group_rows_by_key(
@@ -49,12 +67,16 @@ def select_runtime_job(
     group_cohort_rows_by_key = group_rows_by_key(
         runtime_planning.group_cohort_rows, key_name="cohort"
     )
+    category_match_found = False
+    group_cohort_match_found = False
 
     for article_row in runtime_planning.article_rows:
         category_key = normalized_key(article_row["category"])
         for category_row in category_rows_by_key.get(category_key, ()):
+            category_match_found = True
             cohort_key = normalized_key(category_row["cohort"])
             for group_row in group_cohort_rows_by_key.get(cohort_key, ()):
+                group_cohort_match_found = True
                 for window_row in open_windows.get(cohort_key, ()):
                     eligible_jobs.append(
                         RuntimeJob(
@@ -69,20 +91,32 @@ def select_runtime_job(
                     )
 
     if not eligible_jobs:
-        return None
+        if not category_match_found:
+            no_selection_reason = "no_category_routing_match"
+        elif not group_cohort_match_found:
+            no_selection_reason = "no_group_cohort_match"
+        else:
+            no_selection_reason = "no_eligible_runtime_candidates"
+        return RuntimeJobSelectionDiagnostic(
+            selected_job=None,
+            no_selection_reason=no_selection_reason,
+        )
 
-    return sorted(
-        eligible_jobs,
-        key=lambda job: (
-            normalized_key(job.article_title),
-            normalized_key(job.category),
-            normalized_key(job.cohort),
-            normalized_key(job.group_name),
-            normalized_key(job.day_of_week),
-            job.start_time,
-            job.end_time,
-        ),
-    )[0]
+    return RuntimeJobSelectionDiagnostic(
+        selected_job=sorted(
+            eligible_jobs,
+            key=lambda job: (
+                normalized_key(job.article_title),
+                normalized_key(job.category),
+                normalized_key(job.cohort),
+                normalized_key(job.group_name),
+                normalized_key(job.day_of_week),
+                job.start_time,
+                job.end_time,
+            ),
+        )[0],
+        no_selection_reason=None,
+    )
 
 
 def find_open_posting_windows(
